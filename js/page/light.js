@@ -13,7 +13,7 @@ import {
     ScrollView,
     NativeModules,
     TouchableOpacity,
-    Modal
+    DeviceEventEmitter
 } from "react-native";
 import {connect} from "react-redux";
 import {XIcon, XIonic} from "../component/XIcon";
@@ -52,6 +52,8 @@ class Light extends Component {
                 this.setState({...light});
                 //进行连接
                 Controller.Connect(light.coreId);
+                //進行設備事件監聽
+                Controller.ListenEvent(1, light.nodeNo);
             }
         });
         //获取场景
@@ -70,9 +72,36 @@ class Light extends Component {
             ToastAndroid.show(Toast.timeout, ToastAndroid.SHORT);
         });
         //将灯的场景写入
-        setTimeout(()=>{
+        setTimeout(() => {
             this.props.dispatch(setSceneId(this.state.scenarioId || 0));
-        },1)
+        }, 1)
+        //監聽設備事件
+        DeviceEventEmitter.addListener("updateXDDevice", (data) => {
+            // handle event.
+            try {
+                const device = JSON.parse(data.data);
+                if (device.nd == this.state.nodeNo) {
+                    //進行數據更新
+                    if (this.isExist(device.BR) && device.BR != this.state.brightness) {
+                        this.setState({brightness: device.BR});
+                    }
+                    if (this.isExist(device.CCT) && device.CCT != this.state.cct)
+                        this.setState({cct: device.CCT});
+                    if (this.isExist(device.State) && device.State != this.state.isOn)
+                        this.setState({isOn: device.State});
+                    if (this.isExist(device.R) && this.isExist(device.G) && this.isExist(device.B) && (device.R != this.getColor(0) || device.G != this.getColor(1) || device.B != this.getColor(2)))
+                        this.setState({color: "rgb(" + device.R + "," + device.G + "," + device.B + ")"});
+                }
+            } catch (e) {
+            }
+        })
+    }
+
+    isExist = (value) => {
+        if (value || value == 0)
+            return true
+        else
+            return false;
     }
 
     changeBrightness = () => {
@@ -95,6 +124,16 @@ class Light extends Component {
             node_id: this.state.nodeNo,
             ring: [0, 1, this.state.brightness, 0, this.getColor(0), this.getColor(1), this.getColor(2)]
         }));
+    }
+
+    changeState = () => {
+        const state = this.state.isOn == 1 ? 0 : 1;
+        Controller.JSONCommand(JSON.stringify({
+            cmd: 1,
+            node_id: this.state.nodeNo,
+            state: state
+        }));
+        //this.setState({isOn: state});
     }
 
     getSceneName = () => {
@@ -138,7 +177,7 @@ class Light extends Component {
                     <View style={[styles.header,{marginTop:this.props.indexReducer.marginTop}]}>
                         <View style={styles.leftIcon}>
                             <TouchableOpacity
-                                onPress={()=>{this.props.navigation.goBack()}}>
+                                onPress={()=>{Controller.RemoveListenEvent(); this.props.navigation.goBack()}}>
                                 <View>
                                     <XIcon name="angle-left" color={fontColor} size={28}/>
                                 </View>
@@ -156,6 +195,16 @@ class Light extends Component {
                     </View>
                 </View>
                 <ScrollView>
+                    <View>
+                        <View style={{alignItems:"center"}}>
+                            <TouchableOpacity onPress={()=>{this.changeState()}} style={{alignItems:"center"}}>
+                                <View
+                                    style={styles.power}>
+                                    <XIonic name="md-power" size={50} color={this.state.isOn==1?"#4370E5":"gray"}/>
+                                </View>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
                     <TouchableOpacity
                         style={[styles.item,{flexDirection:"column"}]}
                         onPress={()=>{ this.props.navigation.navigate("Scenes",{source:"light",coreId:this.state.coreId,nodeNo:this.state.nodeNo})}}>
@@ -261,26 +310,27 @@ class Light extends Component {
                             <XIonic name="ios-snow" size={25} color="#5ED7EC"/>
                         </View>
                     </View>
-                    <View style={styles.pdSetting}>
-                        <View style={{flex:1}}>
-                            <Text style={[styles.settingSize,{flex:1}]}>
-                                {lightFont.colorSetting}
-                            </Text>
-                        </View>
-                        <View style={{flex:1,alignItems:"flex-end"}}>
-                            <View style={[styles.colorIcon,{backgroundColor:this.state.color,borderRadius:10}]}>
+                    {this.state.deviceNodeType > 1 ? <View style={styles.pdSetting}>
+                            <View style={{flex:1}}>
+                                <Text style={[styles.settingSize,{flex:1}]}>
+                                    {lightFont.colorSetting}
+                                </Text>
                             </View>
-                        </View>
-                    </View>
-                    <View
-                        style={[styles.item,styles.noneMt]}>
-                        <View style={{flex:8,flexDirection:"row"}}>
-                            {colors}
-                        </View>
-                        <View style={{flex:1,alignItems:"center"}}>
-                            <XIonic name="ios-color-palette" size={25} color="#333"/>
-                        </View>
-                    </View>
+                            <View style={{flex:1,alignItems:"flex-end"}}>
+                                <View style={[styles.colorIcon,{backgroundColor:this.state.color,borderRadius:10}]}>
+                                </View>
+                            </View>
+                        </View> : <View></View>}
+                    {this.state.deviceNodeType > 1 ?
+                        <View
+                            style={[styles.item,styles.noneMt]}>
+                            <View style={{flex:8,flexDirection:"row"}}>
+                                {colors}
+                            </View>
+                            <View style={{flex:1,alignItems:"center"}}>
+                                <XIonic name="ios-color-palette" size={25} color="#333"/>
+                            </View>
+                        </View> : <View></View>}
                 </ScrollView>
                 <View>
                     <ActionSheet
@@ -339,6 +389,16 @@ const styles = StyleSheet.create({
         shadowOpacity: 0.35,
         borderWidth: .5,
         top: 11
+    },
+    power: {
+        alignItems: "center",
+        borderRadius: 30,
+        marginTop: 5,
+        borderWidth: 5,
+        height: 60,
+        width: 60,
+        borderColor: "white",
+        backgroundColor: "rgb(255,255,255)"
     },
     colorIcon: {
         width: 20,

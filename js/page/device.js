@@ -14,14 +14,15 @@ import {
     BackAndroid,
     NativeModules,
     ActivityIndicator,
-    PixelRatio
+    PixelRatio,
+    DeviceEventEmitter
 } from "react-native";
 import {connect} from "react-redux";
 import {PullView} from "react-native-pull";
-import {XIcon,XIonic} from "../component/XIcon";
+import {XIcon, XIonic} from "../component/XIcon";
 import api from "../script/api";
-import {setDevice, setOutWeather} from "../action/deviceAction";
-import {setPosition,setSliderMode} from "../action/index";
+import {setDevice} from "../action/deviceAction";
+import {setPosition, setSliderMode} from "../action/index";
 import Switch from "react-native-switch-pro";
 import {weatherIcon} from "../script/weather";
 const Controller = NativeModules.Controller;
@@ -29,7 +30,18 @@ const Command = NativeModules.Command;
 class Device extends Component {
     constructor(props) {
         super(props);
-        this.state = {isLoding: false};
+        this.state = {
+            isLoding: false,
+            location: "N/A",
+            outIcon: "code999",
+            outTemperature: "N/A",
+            outBodyTemperature: "N/A",
+            outHumidity: "N/A",
+            outRange: "N/A",
+            DHTt: "N/A",
+            DHTh: "N/A",
+            ALS: "N/A"
+        };
         BackAndroid.addEventListener('hardwareBackPress', this.onBackAndroid);
     }
 
@@ -49,7 +61,7 @@ class Device extends Component {
         return true;
     };
 
-    componentDidMount() {
+    componentWillMount() {
         this.getPosition();
         //获取该用户下的所有设备
         this.setState({isLoding: true});
@@ -68,6 +80,16 @@ class Device extends Component {
         })
         //设置可拖拽的left
         this.props.dispatch(setSliderMode("unlocked"));
+        //監聽數據事件
+        DeviceEventEmitter.addListener("updateSensor", (data) => {
+            // handle event.
+            try {
+                const sensor = JSON.parse(data.data);
+                //進行數據更新
+                this.setState({...sensor});
+            } catch (e) {
+            }
+        })
     }
 
     getPosition() {
@@ -102,8 +124,7 @@ class Device extends Component {
                         outHumidity: ret.now.hum,
                         outRange: ret.daily_forecast[0].tmp.min + "-" + ret.daily_forecast[0].tmp.max,
                     }
-                    const {dispatch} = this.props;
-                    dispatch(setOutWeather(info));
+                    this.setState({...info});
                 }
             }).catch(err => {
                 ToastAndroid.show(Toast.weatherError, ToastAndroid.SHORT);
@@ -119,13 +140,16 @@ class Device extends Component {
         var accessToken = this.props.userReducer.user.access_token;
         return fetch(api.device.devices + "?access_token=" + accessToken).then(res => res.json());
     }
-
+    devices = [];
     filterDevice = (data) => {
         const {dispatch} = this.props;
-        let devices = [];
+        let mainDevice = null;
         data.forEach((device) => {
+            if (device.maindevice) {
+                mainDevice = device.coreid;
+            }
             device.devicenodes.forEach((node) => {
-                devices.push({
+                this.devices.push({
                     id: node.id,
                     coreId: device.coreid,
                     deviceType: node.devicetype,
@@ -140,8 +164,9 @@ class Device extends Component {
                 });
             });
         });
-        //将输入放入redux
-        dispatch(setDevice(devices));
+        //将設備放入redux
+        dispatch(setDevice(this.devices));
+        mainDevice && Controller.ConnectMain(mainDevice);
     }
 
     onPullRelease = (resolve) => {
@@ -173,10 +198,10 @@ class Device extends Component {
     render() {
         const deviceFont = this.props.indexReducer.language.Page.Device;
         const fontColor = "white";
-        const deviceList = this.props.deviceReducer.devices;
-        const {deviceReducer} = this.props;
+        //const deviceList = this.props.deviceReducer.devices;
+        //const {deviceReducer} = this.props;
         let deviceRender = [];
-        deviceList && deviceList.forEach((device, index) => {
+        this.devices && this.devices.forEach((device, index) => {
             deviceRender.push(
                 <TouchableOpacity key={`device_${index}`} style={styles.deviceItem} onPress={()=>{
                     this.props.navigation.navigate("Light",{id:device.id});
@@ -194,6 +219,7 @@ class Device extends Component {
                     </View>
                     <View style={styles.deviceSwitch}>
                         <Switch onSyncPress={(value) => {
+                            device.isOn = value;
                             Controller.Connect(device.coreId);
                             Controller.JSONCommand(JSON.stringify({cmd:1,node_id:device.nodeNo,state:(value?1:0)}));
                         }} value={device.isOn}/>
@@ -218,7 +244,7 @@ class Device extends Component {
                                     </TouchableOpacity>
                                 </View>
                                 <View style={{flex:5,alignItems:"center"}}>
-                                    <Text style={styles.headerText}>{deviceReducer.location}</Text>
+                                    <Text style={styles.headerText}>{this.state.location}</Text>
                                 </View>
                                 <View style={styles.rightIcon}>
                                     <XIonic name="md-add" color={fontColor} size={28}/>
@@ -230,14 +256,14 @@ class Device extends Component {
                                 </View>
                                 <View style={{flex:1.5,justifyContent:"center",alignItems:"center"}}>
                                     <Text style={styles.mainTp}>
-                                        {deviceReducer.outTemperature}<Text style={{fontSize:25}}>℃</Text>
+                                        {this.state.outTemperature}<Text style={{fontSize:25}}>℃</Text>
                                     </Text>
                                 </View>
                                 <View style={styles.tpRange}>
-                                    <Image source={weatherIcon[deviceReducer.outIcon]}
+                                    <Image source={weatherIcon[this.state.outIcon]}
                                            style={styles.weatherIcon}></Image>
                                     <Text style={[styles.white,styles.defaultSize]}>
-                                        {deviceReducer.outRange}<Text>℃</Text>
+                                        {this.state.outRange}<Text>℃</Text>
                                     </Text>
                                 </View>
                             </View>
@@ -248,14 +274,14 @@ class Device extends Component {
                                         <Text
                                             style={[styles.ml5,styles.white,styles.defaultSize]}>{deviceFont.temperatureFont}</Text>
                                         <Text
-                                            style={[styles.ml5,styles.white,styles.defaultSize]}>{deviceReducer.outBodyTemperature}<Text>℃</Text></Text>
+                                            style={[styles.ml5,styles.white,styles.defaultSize]}>{this.state.outBodyTemperature}<Text>℃</Text></Text>
                                     </View>
                                     <View style={[{flexDirection:"row",paddingLeft:10},styles.mt5]}>
                                         <XIcon name="tint" color={fontColor} size={25}/>
                                         <Text
                                             style={[styles.ml5,styles.white,styles.defaultSize]}>{deviceFont.humidityFont}</Text>
                                         <Text
-                                            style={[styles.ml5,styles.white,styles.defaultSize]}>{deviceReducer.outHumidity}<Text>%</Text></Text>
+                                            style={[styles.ml5,styles.white,styles.defaultSize]}>{this.state.outHumidity}<Text>%</Text></Text>
                                     </View>
                                 </View>
                                 <View style={{flex:1}}>
@@ -279,9 +305,9 @@ class Device extends Component {
                     </PullView>
                 </View>
                 <View style={styles.senView}>
-                    {senItem(deviceFont.roomTemperature, deviceReducer.roomTemperature, "℃", "thermometer-3")}
-                    {senItem(deviceFont.roomHumidity, deviceReducer.roomHumidity, "%", "tint")}
-                    {senItem(deviceFont.roomBrightness, deviceReducer.roomBrightness, "lx", "md-bulb")}
+                    {senItem(deviceFont.roomTemperature, this.state.DHTt, "℃", "thermometer-3")}
+                    {senItem(deviceFont.roomHumidity, this.state.DHTh, "%", "tint")}
+                    {senItem(deviceFont.roomBrightness, this.state.ALS, "lx", "md-bulb")}
                 </View>
                 <View style={{flex:1}}>
                     <View style={styles.pd10}>
@@ -305,7 +331,8 @@ const senItem = (desc, value, unit, icon) => (
     <View style={styles.senItem}>
         <View><Text>{desc}</Text></View>
         <View style={[{flexDirection:"row"},styles.mt10]}>
-            {icon=="md-bulb"? <XIonic name={icon} color={"#757575"} size={16}/>: <XIcon name={icon} color={"#757575"} size={16}/>}
+            {icon == "md-bulb" ? <XIonic name={icon} color={"#757575"} size={16}/> :
+                <XIcon name={icon} color={"#757575"} size={16}/>}
             <Text style={[styles.ml5,styles.senValue,{marginTop:-5}]}>{value}<Text>{unit}</Text></Text>
         </View>
     </View>

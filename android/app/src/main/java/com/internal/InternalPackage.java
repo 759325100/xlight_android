@@ -32,7 +32,6 @@ public class InternalPackage implements ReactPackage {
         List<NativeModule> modules = new ArrayList<>();
 
         modules.add(new Controller(reactContext));
-        modules.add(new com.internal.DialogTModule(reactContext));
         modules.add(new Command(reactContext));
         return modules;
     }

@@ -3,14 +3,19 @@ package com.internal;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
+import android.support.annotation.Nullable;
 import android.telecom.Call;
 import android.util.Log;
 
 import com.facebook.infer.annotation.Strict;
+import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.Callback;
 import com.facebook.react.bridge.ReactApplicationContext;
+import com.facebook.react.bridge.ReactContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
+import com.facebook.react.bridge.WritableMap;
+import com.facebook.react.modules.core.DeviceEventManagerModule;
 import com.umarbhutta.xlightcompanion.SDK.xltDevice;
 
 import org.json.JSONArray;
@@ -23,6 +28,7 @@ import org.json.JSONObject;
  */
 public class Controller extends ReactContextBaseJavaModule {
     private xltDevice xd;
+    private xltDevice xdData;
     private final String TAG = "Controller";
     private String deviceId = null;
 
@@ -35,12 +41,6 @@ public class Controller extends ReactContextBaseJavaModule {
     public String getName() {
         return "Controller";
     }
-
-    //设备消息监听器
-    Handler deviceHandler = null;
-
-    //数据消息监听器
-    Handler dataHandler = null;
 
     /**
      * 初始化连接
@@ -57,8 +57,56 @@ public class Controller extends ReactContextBaseJavaModule {
             xd.setAutoBridge(false);
             //关闭广播监听
             xd.setEnableEventBroadcast(false);
+            //备用
+            xdData = new xltDevice();
+            xdData.Init(getReactApplicationContext(), username, password);
+            xdData.useBridge(xltDevice.BridgeType.Cloud);
+            xdData.setAutoBridge(false);
+            xdData.setEnableEventBroadcast(false);
         } catch (Exception e) {
             Log.e(TAG, e.getMessage());
+        }
+    }
+
+    private void sendEvent(ReactContext reactContext,
+                           String eventName,
+                           @Nullable WritableMap params) {
+        reactContext
+                .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
+                .emit(eventName, params);
+    }
+
+    @ReactMethod
+    public void ConnectMain(String deviceId) {
+        try {
+            xdData.Connect(deviceId);
+            if (!xdData.getEnableEventSendMessage()) {
+                xdData.setEnableEventSendMessage(true);
+            }
+            Handler dataHandler = new Handler() {
+                public void handleMessage(Message msg) {
+                    try {
+                        Bundle bundle = msg.getData();
+                        JSONObject jo = new JSONObject();
+                        for (String key : bundle.keySet()) {
+                            jo.put(key, bundle.get(key));
+                        }
+                        Log.i(TAG, "receive main sensor msg:" + jo.toString());
+                        WritableMap params = Arguments.createMap();
+                        params.putString("data", jo.toString());
+                        sendEvent(getReactApplicationContext(), "updateSensor", params);
+                    } catch (Exception ex) {
+                        Log.e(TAG, ex.getMessage());
+                    }
+                }
+            };
+            //移除事件，为保证效率，只能绑定一个通知
+            if (dataHandler != null)
+                xdData.removeDataEventHandler(dataHandler);
+            Log.i(this.TAG, "Init Main ListenEvent");
+            xdData.addDataEventHandler(dataHandler);
+        } catch (Exception ex) {
+            Log.e(this.TAG, ex.getMessage());
         }
     }
 
@@ -96,19 +144,6 @@ public class Controller extends ReactContextBaseJavaModule {
     public void DisConnect() {
 
     }
-
-//    @ReactMethod
-//    public void SendMessage() {
-//        try {
-//            Log.i(this.TAG, "Init SendMessage");
-//            //xd.setEnableEventSendMessage(true);
-//            final Bundle bundle = new Bundle();
-//            bundle.putString("Data", "this is test");
-//            xd.sendDeviceStatusMessage(bundle);
-//        } catch (Exception e) {
-//            Log.e(TAG, e.getMessage());
-//        }
-//    }
 
     /**
      * 执行批量命令
@@ -192,38 +227,78 @@ public class Controller extends ReactContextBaseJavaModule {
         }
     }
 
+    //设备消息监听器
+    Handler deviceHandler = new Handler(getReactApplicationContext().getMainLooper()) {
+        public void handleMessage(Message msg) {
+            try {
+                Bundle bundle = msg.getData();
+                JSONObject jo = new JSONObject();
+                for (String key : bundle.keySet()) {
+                    jo.put(key, bundle.get(key));
+                }
+                Log.i(TAG, "receive main XDDevice msg:" + jo.toString());
+                WritableMap params = Arguments.createMap();
+                params.putString("data", jo.toString());
+                sendEvent(getReactApplicationContext(), "updateXDDevice", params);
+            } catch (Exception ex) {
+                Log.e(TAG, ex.getMessage());
+            }
+        }
+    };
+
+    //数据消息监听器
+    Handler dataHandler = new Handler(getReactApplicationContext().getMainLooper()) {
+        public void handleMessage(Message msg) {
+            try {
+                Bundle bundle = msg.getData();
+                JSONObject jo = new JSONObject();
+                for (String key : bundle.keySet()) {
+                    jo.put(key, bundle.get(key));
+                }
+                Log.i(TAG, "receive main XDSensor msg:" + jo.toString());
+                WritableMap params = Arguments.createMap();
+                params.putString("data", jo.toString());
+                sendEvent(getReactApplicationContext(), "updateXDSensor", params);
+            } catch (Exception ex) {
+                Log.e(TAG, ex.getMessage());
+            }
+        }
+    };
+
+    /**
+     *
+     */
+    @ReactMethod
+    public void RemoveListenEvent() {
+        Log.i(TAG, "remove event listen");
+        if (dataHandler != null)
+            xd.removeDataEventHandler(dataHandler);
+        if (deviceHandler != null)
+            xd.removeDeviceEventHandler(deviceHandler);
+    }
+
     /**
      * 添加事件监听
      *
-     * @param type     {要监听的事件类型 0全部 1设备 2数据}
-     * @param callback {有数据的回调函数}
+     * @param type {要监听的事件类型 0全部 1设备 2数据}
      */
     @ReactMethod
-    public void ListenEvent(int type, final Callback callback) {
+    public void ListenEvent(int type, int nd) {
         try {
             if (!xd.getEnableEventSendMessage()) {
                 xd.setEnableEventSendMessage(true);
             }
             //移除事件，为保证效率，只能绑定一个通知
-            if (deviceHandler != null)
-                xd.removeDeviceEventHandler(deviceHandler);
-            if (dataHandler != null)
-                xd.removeDataEventHandler(dataHandler);
+            xd.clearDeviceEventHandlerList();
+            xd.clearDataEventHandlerList();
             Log.i(this.TAG, "Init ListenEvent");
-            deviceHandler = new Handler() {
-                public void handleMessage(Message msg) {
-                    Log.i(TAG, "receive device msg:" + msg.toString());
-                    callback.invoke(1, msg.toString());
-                }
-            };
-            xd.addDeviceEventHandler(deviceHandler);
-            Handler dataHandler = new Handler() {
-                public void handleMessage(Message msg) {
-                    Log.i(TAG, "receive data msg:" + msg.toString());
-                    callback.invoke(2, msg.toString());
-                }
-            };
-            xd.addDataEventHandler(dataHandler);
+            if (type == 0 || type == 1) {
+                xd.addDeviceEventHandler(deviceHandler);
+            }
+            if (type == 0 || type == 2)
+                xd.addDataEventHandler(dataHandler);
+            xd.setDeviceID(nd);
+            Log.i(TAG, "query node_id=" + nd);
         } catch (Exception ex) {
             Log.e(this.TAG, ex.getMessage());
         }
