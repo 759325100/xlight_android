@@ -45,11 +45,12 @@ export const language = {
                 selectRing: "Please select a ring",
                 brightnessSetting: "Brightness setting",
                 cctSetting: "CCT setting",
-                colorSetting: "Color setting"
+                colorSetting: "Color setting",
+                select: "Select"
             },
-            Scenes:{
-                title:"Scenes",
-                systemScenes:"System scenes"
+            Scenes: {
+                title: "Scenes",
+                systemScenes: "System scenes"
             }
         },
         Menu: [
@@ -108,11 +109,12 @@ export const language = {
                 selectRing: "请选择环灯",
                 brightnessSetting: "亮度设定",
                 cctSetting: "色温设定",
-                colorSetting: "颜色设定"
+                colorSetting: "颜色设定",
+                select: "选中"
             },
-            Scenes:{
-                title:"场景",
-                systemScenes:"内置场景"
+            Scenes: {
+                title: "场景",
+                systemScenes: "内置场景"
             }
         },
         Menu: [

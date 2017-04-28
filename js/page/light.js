@@ -21,6 +21,11 @@ import Slider from "react-native-slider";
 import {setSceneId} from "../action/deviceAction";
 import ActionSheet from "react-native-actionsheet";
 import api from "../script/api";
+import Modal from "react-native-modal";
+import {ColorPicker, toRgb} from "react-native-color-picker";
+import Button from "react-native-button";
+import tinycolor from "tinycolor2";
+
 const Controller = NativeModules.Controller;
 
 
@@ -38,7 +43,10 @@ class Light extends Component {
                 "rgb(139,0,255)"
             ],
             color: "rgb(255,255,255)",
-            useRing: 0
+            useRing: 0,
+            colorPicker: {
+                visible: false
+            }
         }
         this.selectRing = this.selectRing.bind(this)
     }
@@ -118,6 +126,11 @@ class Light extends Component {
         return color.split(',')[i];
     }
 
+    setColor = (rgb) => {
+        console.log(rgb);
+        this.setState({color: `rgb(${rgb.r},${rgb.g},${rgb.b})`})
+    }
+
     changeColor = () => {
         Controller.JSONCommand(JSON.stringify({
             cmd: 2,
@@ -137,14 +150,33 @@ class Light extends Component {
     }
 
     getSceneName = () => {
-        let sceneName = "";
-        //找到场景名称
-        this.state.scenes && this.state.scenes.length > 0 && this.state.scenes.forEach((scene) => {
-            if (this.props.deviceReducer.sceneId == scene.id) {
-                sceneName = scene.scenarioname;
-            }
-        })
-        return sceneName;
+        if (!this.state.scenarioName) {
+            //找到场景名称
+            this.state.scenes && this.state.scenes.length > 0 && this.state.scenes.forEach((scene) => {
+                if (this.props.deviceReducer.sceneId == scene.id) {
+                    this.setState({scenarioName: scene.scenarioname})
+                }
+            })
+        }
+        return this.state.scenarioName;
+    }
+
+    changeScene = (scene) => {
+        let color;
+        if (scene.scenarionodes && scene.scenarionodes.length)
+            color = `rgb(${scene.scenarionodes[0].R},${scene.scenarionodes[0].G},${scene.scenarionodes[0].B})`
+        else
+            color = this.state.color;
+
+        //应用场景数据
+        this.setState({
+            scenarioName: scene.scenarioname,
+            scenarioId: scene.id,
+            cct: scene.cct,
+            brightness: scene.brightness,
+            color: color
+        });
+        //调用改变场景（未对接）
     }
 
     selectRing = (index) => {
@@ -207,11 +239,11 @@ class Light extends Component {
                     </View>
                     <TouchableOpacity
                         style={[styles.item,{flexDirection:"column"}]}
-                        onPress={()=>{ this.props.navigation.navigate("Scenes",{source:"light",coreId:this.state.coreId,nodeNo:this.state.nodeNo})}}>
+                        onPress={()=>{ this.props.navigation.navigate("Scenes",{callback:this.changeScene,sceneId:this.state.scenarioId})}}>
                         <View style={{flexDirection:"row"}}>
                             <View style={{flex:3,paddingLeft:5}}>
                                 <Text
-                                    style={styles.defaultSize}>{!this.props.deviceReducer.sceneId ? lightFont.selectScenario : this.getSceneName()}</Text>
+                                    style={styles.defaultSize}>{!this.state.scenarioId ? lightFont.selectScenario : this.getSceneName()}</Text>
                             </View>
                             <View style={{flex:1,alignItems:"flex-end",paddingRight:5}}>
                                 <XIcon name="angle-right" size={25} color="#c7c7c7"/>
@@ -321,15 +353,17 @@ class Light extends Component {
                                 </View>
                             </View>
                         </View> : <View></View>}
-                    {this.state.deviceNodeType > 1 ?
-                        <View
+                    {this.state.deviceNodeType > 1 ? <View
                             style={[styles.item,styles.noneMt]}>
                             <View style={{flex:8,flexDirection:"row"}}>
                                 {colors}
                             </View>
-                            <View style={{flex:1,alignItems:"center"}}>
-                                <XIonic name="ios-color-palette" size={25} color="#333"/>
-                            </View>
+                            <TouchableOpacity style={{flex:1}}
+                                              onPress={()=>this.setState({colorPicker:{visible:true}})}>
+                                <View style={{flex:1,alignItems:"center"}}>
+                                    <XIonic name="ios-color-palette" size={25} color="#333"/>
+                                </View>
+                            </TouchableOpacity>
                         </View> : <View></View>}
                 </ScrollView>
                 <View>
@@ -340,6 +374,33 @@ class Light extends Component {
                         cancelButtonIndex={0}
                         onPress={this.selectRing}
                     />
+                </View>
+                <View>
+                    <Modal isVisible={this.state.colorPicker.visible}>
+                        <TouchableOpacity
+                            onPress={()=>this.setState({colorPicker:{visible:false}})}>
+                            <View style={{alignItems:"flex-end"}}>
+                                <XIonic name="md-close" size={30} color="white"/>
+                            </View>
+                        </TouchableOpacity>
+                        <View style={{ flex: 1 }}>
+                            <ColorPicker
+                                defaultColor={this.state.color}
+                                onColorSelected={color=>{this.setState({picterColor:color})}}
+                                style={{flex: 5}}
+                            />
+                            <View style={{flex:2,justifyContent:"center"}}>
+                                <View style={{padding:20}}>
+                                    <Button
+                                        style={[styles.signBtn,styles.size20]}
+                                        containerStyle={[styles.signContainer,styles.btnContainer]}
+                                        onPress={() => {this.setColor(tinycolor(this.state.picterColor).toRgb());this.changeColor();this.setState({colorPicker:{visible:false}})}}>
+                                        {lightFont.select}
+                                    </Button>
+                                </View>
+                            </View>
+                        </View>
+                    </Modal>
                 </View>
             </View>);
     }
@@ -447,7 +508,19 @@ const styles = StyleSheet.create({
     top: {
         backgroundColor: "#4370E5",
         height: 240
-    }
+    },
+    size20: {
+        fontSize: 20
+    },
+    signBtn: {
+        color: '#333333'
+    },
+    btnContainer: {
+        padding: 4, height: 35, overflow: 'hidden', borderRadius: 20,
+    },
+    signContainer: {
+        backgroundColor: 'white'
+    },
 });
 
 const mapStateToProps = (state) => ({

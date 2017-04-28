@@ -316,10 +316,8 @@ class Device extends Component {
                         </Text>
                     </View>
                     <ScrollView style={{flex:1}}>
-                        {this.state.isLoding ? (
-                                <View><ActivityIndicator color={"white"} animating={this.state.isLoding} size='large'/></View>) :
-                            (<View></View>)}
                         {deviceRender}
+                        <View><ActivityIndicator color={"white"} animating={this.state.isLoding} size='large'/></View>
                     </ScrollView>
                 </View>
             </View>

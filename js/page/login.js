@@ -128,10 +128,7 @@ class Login extends Component {
                             {loginFont.registerBtn}
                         </Button>
                     </View>
-                    {this.state.login ? (<View>
-                            <ActivityIndicator color={"white"} animating={this.state.login} size='large'/>
-                        </View>) : (<View></View>)}
-
+                    <ActivityIndicator color={"white"} animating={this.state.login} size='large'/>
                 </View>
             </View>
         );

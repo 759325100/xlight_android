@@ -13,45 +13,49 @@ import {
     ScrollView,
     NativeModules,
     TouchableOpacity,
-    Modal
+    Modal,
+    ActivityIndicator
 } from "react-native";
 import {connect} from "react-redux";
 import {XIcon, XIonic} from "../component/XIcon";
 import api from "../script/api";
-import {setSceneId} from "../action/deviceAction";
 
 class Scenes extends Component {
     constructor(props) {
         super(props);
         this.state = {
-            selectScene: 0
+            sceneId: 0,
+            isLoding: false
         }
     }
 
     componentWillMount() {
         const {Toast} = this.props.indexReducer.language;
         var accessToken = this.props.userReducer.user.access_token;
+        this.setState({isLoding: true});
         //获取场景数据
         fetch(api.scene.scenes + "?access_token=" + accessToken).then(ret => ret.json()).then(ret => {
             if (ret.code == 1) {
                 const scenes = ret.data.rows;
-                this.setState({scenes: scenes});
+                this.setState({scenes: scenes, isLoding: false});
             } else {
                 //提示
                 ToastAndroid.show(Toast.apiError, ToastAndroid.SHORT);
+                this.setState({isLoding: false});
             }
         }).catch(err => {
             ToastAndroid.show(Toast.timeout, ToastAndroid.SHORT);
+            this.setState({isLoding: false});
         });
+        this.props.navigation.state.params.callback && this.setState({sceneId: this.props.navigation.state.params.sceneId});
     }
 
-    changeScene = (sceneId) => {
-        setTimeout(() => {
-            //设置选中此灯
-            this.props.dispatch(setSceneId(sceneId));
-        }, 1);
-        //调用生效接口
-        //fetch()
+    selectScene = (scene) => {
+        if (this.props.navigation.state.params.callback) {
+            this.setState({sceneId: scene.id});
+            this.props.navigation.state.params.callback(scene);
+            this.props.navigation.goBack();
+        }
     }
 
     render() {
@@ -60,7 +64,7 @@ class Scenes extends Component {
         this.state.scenes && this.state.scenes.length > 0 && this.state.scenes.forEach((scene, index) => {
             if (scene.type == 1) {
                 systemScenes.push((<TouchableOpacity
-                    onPress={()=>{this.props.navigation.state.params.source && this.changeScene(scene.id)}}
+                    onPress={()=>this.selectScene(scene)}
                     key={`scene_${index}`}>
                     <View
                         style={[styles.item]}>
@@ -73,7 +77,7 @@ class Scenes extends Component {
                             <Text style={styles.defaultSize}>{scene.scenarioname}</Text>
                         </View>
                         {
-                            this.props.navigation.state.params.source && this.props.deviceReducer.sceneId == scene.id &&
+                            this.props.navigation.state.params.callback && this.state.sceneId == scene.id &&
                             <View style={{flex:1,alignItems:"center"}}>
                                 <XIonic name="ios-checkmark-circle" size={28} color="#4370E5"/>
                             </View>
@@ -110,6 +114,7 @@ class Scenes extends Component {
                     </View>
                     {systemScenes}
                 </View>
+                <View><ActivityIndicator color={"white"} animating={this.state.isLoding} size='large'/></View>
             </View>
         );
     }
@@ -132,7 +137,7 @@ const styles = StyleSheet.create({
         borderRadius: 15
     },
     item: {
-        padding: 8,
+        padding: 10,
         backgroundColor: "white",
         flexDirection: "row",
         justifyContent: "center",
