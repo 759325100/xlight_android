@@ -40,7 +40,7 @@ public class Command extends ReactContextBaseJavaModule {
     public void getApiLevel(Callback callback) {
         boolean isSupport = false;
         Log.i("XLight", "Level->" + Build.VERSION.SDK_INT + "->" + Build.VERSION_CODES.KITKAT);
-        if (Build.VERSION.SDK_INT > Build.VERSION_CODES.KITKAT)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT)
             isSupport = true;
         callback.invoke(isSupport);
     }

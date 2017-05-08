@@ -13,7 +13,6 @@ import {
     ScrollView,
     ToastAndroid,
     NativeModules,
-    BackAndroid,
     ActivityIndicator
 } from "react-native";
 import Button from "react-native-button";

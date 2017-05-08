@@ -42,11 +42,11 @@ class Device extends Component {
             DHTh: "N/A",
             ALS: "N/A"
         };
-        BackAndroid.addEventListener('hardwareBackPress', this.onBackAndroid);
+        BackAndroid.addEventListener('hardwareBackPress', this.onBackHandler);
     }
 
     lastBackPressed = null;
-    onBackAndroid = () => {
+    onBackHandler = () => {
         //判断当前页面
         const {routeName} = this.props.indexReducer;
         if (routeName != "Device")

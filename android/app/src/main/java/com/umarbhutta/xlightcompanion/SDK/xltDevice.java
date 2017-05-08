@@ -5,7 +5,6 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
 import android.os.SystemClock;
-import android.util.Log;
 
 import com.umarbhutta.xlightcompanion.SDK.BLE.BLEPairedDeviceList;
 import com.umarbhutta.xlightcompanion.SDK.BLE.BLEBridge;
@@ -19,11 +18,12 @@ import static com.umarbhutta.xlightcompanion.SDK.BLE.BLEPairedDeviceList.XLIGHT_
 
 /**
  * Created by sunboss on 2016-11-15.
- * <p>
+ *
  * Version: 0.1
- * <p>
+ *
  * Please report bug at bs.sun@datatellit.com,
  * or send pull request to sunbaoshi1975/Android-XlightSmartController
+ *
  */
 
 @SuppressWarnings({"UnusedDeclaration"})
@@ -49,12 +49,16 @@ public class xltDevice {
     public static final int DEFAULT_FILTER_ID = 0;
 
     // Event Names
+    public static final String eventAlarm = "xlc-event-alarm";
+    public static final String eventDeviceConfig = "xlc-config-device";
     public static final String eventDeviceStatus = "xlc-status-device";
     public static final String eventSensorData = "xlc-data-sensor";
 
     // Broadcast Intent
-    public static final String bciDeviceStatus = "ca.xlight.SDK." + eventDeviceStatus;
-    public static final String bciSensorData = "ca.xlight.SDK." + eventSensorData;
+    public static final String bciAlarm = "io.xlight.SDK." + eventAlarm;
+    public static final String bciDeviceConfig = "io.xlight.SDK." + eventDeviceConfig;
+    public static final String bciDeviceStatus = "io.xlight.SDK." + eventDeviceStatus;
+    public static final String bciSensorData = "io.xlight.SDK." + eventSensorData;
 
     // Timeout constants
     private static final int TIMEOUT_CLOUD_LOGIN = 15;
@@ -72,7 +76,7 @@ public class xltDevice {
     public static final int CT_MIN_VALUE = 2700;
     public static final int CT_MAX_VALUE = 6500;
     public static final int CT_SCOPE = 38;
-    public static final int CT_STEP = ((CT_MAX_VALUE - CT_MIN_VALUE) / 10);
+    public static final int CT_STEP = ((CT_MAX_VALUE-CT_MIN_VALUE)/10);
 
     // Command values for JSONCommand Interface
     public static final int CMD_SERIAL = 0;
@@ -82,6 +86,7 @@ public class xltDevice {
     public static final int CMD_SCENARIO = 4;
     public static final int CMD_CCT = 5;
     public static final int CMD_QUERY = 6;
+    public static final int CMD_EFFECT = 7;
 
     // Device (lamp) type
     public static final int devtypUnknown = 0;
@@ -97,6 +102,13 @@ public class xltDevice {
     public static final int devtypDummy = 255;
 
     public static final int DEFAULT_DEVICE_TYPE = devtypWRing3;
+
+    // Filter (special effect)
+    public static final int FILTER_SP_EF_NONE = 0;              // Disable special effect
+    public static final int FILTER_SP_EF_BREATH = 1;            // Normal breathing light
+    public static final int FILTER_SP_EF_FAST_BREATH = 2;       // Fast breathing light
+    public static final int FILTER_SP_EF_FLORID = 3;            // Randomly altering color
+    public static final int FILTER_SP_EF_FAST_FLORID = 4;       // Fast randomly altering color
 
     public enum BridgeType {
         NONE,
@@ -121,18 +133,18 @@ public class xltDevice {
         public int m_String3 = 50;
 
         public boolean isSameColor(final xltRing that) {
-            if (this.m_State != that.m_State) return false;
-            if (this.m_CCT != that.m_CCT) return false;
-            if (this.m_R != that.m_R) return false;
-            if (this.m_G != that.m_G) return false;
-            if (this.m_B != that.m_B) return false;
+            if( this.m_State != that.m_State ) return false;
+            if( this.m_CCT != that.m_CCT ) return false;
+            if( this.m_R != that.m_R ) return false;
+            if( this.m_G != that.m_G ) return false;
+            if( this.m_B != that.m_B ) return false;
             return true;
         }
 
         public boolean isSameBright(final xltRing that) {
-            if (this.m_State != that.m_State) return false;
-            if (this.m_CCT != that.m_CCT) return false;
-            if (this.m_Brightness != that.m_Brightness) return false;
+            if( this.m_State != that.m_State ) return false;
+            if( this.m_CCT != that.m_CCT ) return false;
+            if( this.m_Brightness != that.m_Brightness ) return false;
             return true;
         }
     }
@@ -144,6 +156,12 @@ public class xltDevice {
         public float m_RoomTemp = 24;               // Room temperature
         public int m_RoomHumidity = 40;             // Room humidity
         public int m_RoomBrightness = 0;            // ALS value
+        public int m_Mic = 0;                       // MIC value
+        public int m_PIR = 0;                       // PIR value
+        public int m_GAS = 0;                       // Gas value
+        public int m_Smoke = 0;                     // Smoke value
+        public int m_PM25 = 0;                      // PM2.5 value
+        public int m_Noise = 0;                     // Noise value
 
         public float m_OutsideTemp = 23;            // Local outside temperature
         public int m_OutsideHumidity = 30;          // Local outside humidity
@@ -155,6 +173,8 @@ public class xltDevice {
     public class xltNodeInfo {
         public int m_ID = 0;
         public int m_Type;
+        public boolean m_isUp;
+        public int m_filter;
         public String m_Name;
         // Rings
         public xltRing[] m_Ring = new xltRing[MAX_RING_NUM];
@@ -199,33 +219,32 @@ public class xltDevice {
         super();
 
         // Create member objects
-        m_Data = new SensorData();
+        m_Data= new SensorData();
         cldBridge = new CloudBridge();
         bleBridge = new BLEBridge();
         lanBridge = new LANBridge();
     }
 
     // Initialize objects
-    //Waroom Modify at 2017-04-24 -> add username and password params
-    public void Init(Context context, String username, String password) {
+    public void Init(Context context,String username,String password) {
         // Clear event handler lists
         clearDeviceEventHandlerList();
         clearDataEventHandlerList();
         clearDeviceList();
 
         // Ensure we do it only once
-        if (!m_bInitialized) {
+        if( !m_bInitialized ) {
             // Init BLE Adapter
-            if (!BLEPairedDeviceList.initialized()) {
+            if( !BLEPairedDeviceList.initialized() ) {
                 BLEPairedDeviceList.init(context);
             }
 
             // Init Particle Adapter
-            if (!ParticleAdapter.initialized()) {
+            if( !ParticleAdapter.initialized() ) {
                 ParticleAdapter.init(context);
                 // ToDo: get login credential or access token from DMI
                 // make sure we logged onto IoT cloud
-                ParticleAdapter.authenticate(username, password);
+                ParticleAdapter.authenticate(username,password);
             }
 
             m_bInitialized = true;
@@ -250,7 +269,7 @@ public class xltDevice {
         // If there is no cookie, return default values.
         m_ControllerID = controllerID;
         // ToDo: Add device/node list
-        if (m_lstNodes.size() <= 0) {
+        if( m_lstNodes.size() <= 0 ) {
             // Easy for testing
             addNodeToDeviceList(DEFAULT_DEVICE_ID, DEFAULT_DEVICE_TYPE, DEFAULT_DEVICE_NAME);
         }
@@ -271,17 +290,17 @@ public class xltDevice {
     }
 
     public boolean ConnectCloud() {
-        if (!m_bInitialized) return false;
+        if( !m_bInitialized ) return false;
 
         new Thread(new Runnable() {
             @Override
             public void run() {
                 // Check ControllerID
                 int timeout = TIMEOUT_CLOUD_LOGIN;
-                while (!ParticleAdapter.isAuthenticated() && timeout-- > 0) {
+                while( !ParticleAdapter.isAuthenticated() && timeout-- > 0 ) {
                     SystemClock.sleep(1000);
                 }
-                if (ParticleAdapter.isAuthenticated()) {
+                if( ParticleAdapter.isAuthenticated() ) {
                     if (ParticleAdapter.checkDeviceID(m_ControllerID)) {
                         // Connect Cloud Instance
                         cldBridge.connectCloud(m_ControllerID);
@@ -293,40 +312,40 @@ public class xltDevice {
     }
 
     public boolean ConnectBLE() {
-        return (bleBridge.connectController());
+        return(bleBridge.connectController());
     }
 
     public boolean ConnectLAN() {
         // ToDo: get IP & Port from Cloud or BLE (SmartController told it)
-        return (lanBridge.connectController("192.168.0.114", 5555));
+        return(lanBridge.connectController("192.168.0.114", 5555));
     }
 
     public boolean isSunny() {
-        return (m_currentNode != null ? isSunny(m_currentNode.m_Type) : false);
+        return(m_currentNode != null ? isSunny(m_currentNode.m_Type) : false);
     }
 
     public boolean isRainbow() {
-        return (m_currentNode != null ? isRainbow(m_currentNode.m_Type) : false);
+        return(m_currentNode != null ? isRainbow(m_currentNode.m_Type) : false);
     }
 
     public boolean isMirage() {
-        return (m_currentNode != null ? isMirage(m_currentNode.m_Type) : false);
+        return(m_currentNode != null ? isMirage(m_currentNode.m_Type) : false);
     }
 
     public boolean isSunny(final int DevType) {
-        return (DevType >= devtypWRing3 && DevType <= devtypWRing1);
+        return(DevType >= devtypWRing3 && DevType <= devtypWRing1);
     }
 
     public boolean isRainbow(final int DevType) {
-        return (DevType >= devtypCRing3 && DevType <= devtypCRing1);
+        return(DevType >= devtypCRing3 && DevType <= devtypCRing1);
     }
 
     public boolean isMirage(final int DevType) {
-        return (DevType >= devtypMRing3 && DevType <= devtypMRing1);
+        return(DevType >= devtypMRing3 && DevType <= devtypMRing1);
     }
 
     private int getRingIndex(final int ringID) {
-        return ((ringID >= RING_ID_1 && ringID <= RING_ID_3) ? ringID - 1 : 0);
+        return((ringID >= RING_ID_1 && ringID <= RING_ID_3) ? ringID - 1 : 0);
     }
 
     //-------------------------------------------------------------------------
@@ -340,12 +359,14 @@ public class xltDevice {
         xltNodeInfo lv_node = new xltNodeInfo();
         lv_node.m_ID = devID;
         lv_node.m_Type = devType;
+        lv_node.m_isUp = false;
+        lv_node.m_filter = FILTER_SP_EF_NONE;
         lv_node.m_Name = devName;
-        for (int i = 0; i < MAX_RING_NUM; i++) {
+        for(int i = 0; i < MAX_RING_NUM; i++) {
             lv_node.m_Ring[i] = new xltRing();
         }
         m_lstNodes.add(lv_node);
-        if (m_currentNode == null) {
+        if( m_currentNode == null ) {
             m_currentNode = lv_node;
             m_DevID = devID;
         }
@@ -354,7 +375,7 @@ public class xltDevice {
 
     public int findNodeFromDeviceList(final int devID) {
         for (xltNodeInfo lv_node : m_lstNodes) {
-            if (lv_node.m_ID == devID) {
+            if( lv_node.m_ID == devID ) {
                 return m_lstNodes.indexOf(lv_node);
             }
         }
@@ -363,9 +384,9 @@ public class xltDevice {
 
     public boolean removeNodeFromDeviceList(final int devID) {
         int lv_index = findNodeFromDeviceList(devID);
-        if (lv_index >= 0) {
-            if (m_currentNode != null) {
-                if (m_currentNode.m_ID == devID) m_currentNode = null;
+        if( lv_index >= 0 ) {
+            if( m_currentNode != null ) {
+                if( m_currentNode.m_ID == devID ) m_currentNode = null;
             }
             m_lstNodes.remove(lv_index);
             return true;
@@ -386,7 +407,7 @@ public class xltDevice {
     public void setDeviceID(final int devID) {
         m_DevID = devID;
         int lv_index = findNodeFromDeviceList(devID);
-        if (lv_index >= 0) {
+        if( lv_index >= 0 ) {
             m_currentNode = m_lstNodes.get(lv_index);
         }
     }
@@ -404,28 +425,101 @@ public class xltDevice {
     }
 
     public int getDeviceType() {
-        return (m_currentNode != null ? m_currentNode.m_Type : devtypDummy);
+        return(m_currentNode != null ? m_currentNode.m_Type : devtypDummy);
+    }
+
+    public int getDeviceType(final int nodeID) {
+        int lv_dev = findNodeFromDeviceList(nodeID);
+        if( lv_dev >= 0 ) {
+            return m_lstNodes.get(lv_dev).m_Type;
+        }
+        return(devtypUnknown);
+    }
+
+    public void setDeviceType(final int type) {
+        setDeviceType(m_DevID, type);
+    }
+
+    public void setDeviceType(final int nodeID, final int type) {
+        int lv_dev = findNodeFromDeviceList(nodeID);
+        if( lv_dev >= 0 ) {
+            m_lstNodes.get(lv_dev).m_Type = type;
+        }
     }
 
     public String getDeviceName() {
-        return (m_currentNode != null ? m_currentNode.m_Name : "");
+        return(m_currentNode != null ? m_currentNode.m_Name : "");
+    }
+
+    public String getDeviceName(final int nodeID) {
+        int lv_dev = findNodeFromDeviceList(nodeID);
+        if( lv_dev >= 0 ) {
+            return m_lstNodes.get(lv_dev).m_Name;
+        }
+        return("");
+    }
+
+    public boolean getNodeAlive() {
+        return getNodeAlive(m_DevID);
+    }
+
+    public boolean getNodeAlive(final int nodeID) {
+        int lv_dev = findNodeFromDeviceList(nodeID);
+        if( lv_dev >= 0 ) {
+            return m_lstNodes.get(lv_dev).m_isUp;
+        }
+        return(false);
+    }
+
+    public void setNodeAlive(final boolean isUp) {
+        setNodeAlive(m_DevID, isUp);
+    }
+
+    public void setNodeAlive(final int nodeID, final boolean isUp) {
+        int lv_dev = findNodeFromDeviceList(nodeID);
+        if( lv_dev >= 0 ) {
+            m_lstNodes.get(lv_dev).m_isUp = isUp;
+        }
+    }
+
+    public int getFilter() {
+        return getFilter(m_DevID);
+    }
+
+    public int getFilter(final int nodeID) {
+        int lv_dev = findNodeFromDeviceList(nodeID);
+        if( lv_dev >= 0 ) {
+            return m_lstNodes.get(lv_dev).m_filter;
+        }
+        return(FILTER_SP_EF_NONE);
+    }
+
+    public void setFilter(final int filter) {
+        setFilter(m_DevID, filter);
+    }
+
+    public void setFilter(final int nodeID, final int filter) {
+        int lv_dev = findNodeFromDeviceList(nodeID);
+        if( lv_dev >= 0 ) {
+            m_lstNodes.get(lv_dev).m_filter = filter;
+        }
     }
 
     public int getState() {
-        return (getState(m_DevID));
+        return(getState(m_DevID));
     }
 
     public int getState(final int nodeID) {
-        return (getState(nodeID, RING_ID_ALL));
+        return(getState(nodeID, RING_ID_ALL));
     }
 
     public int getState(final int nodeID, final int ringID) {
         int index = getRingIndex(ringID);
         int lv_dev = findNodeFromDeviceList(nodeID);
-        if (lv_dev >= 0) {
+        if( lv_dev >= 0 ) {
             return m_lstNodes.get(lv_dev).m_Ring[index].m_State;
         }
-        return (-1);
+        return(-1);
     }
 
     public void setState(final int state) {
@@ -438,7 +532,7 @@ public class xltDevice {
 
     public void setState(final int nodeID, final int ringID, final int state) {
         int lv_dev = findNodeFromDeviceList(nodeID);
-        if (lv_dev >= 0) {
+        if( lv_dev >= 0 ) {
             if (ringID == RING_ID_ALL) {
                 m_lstNodes.get(lv_dev).m_Ring[0].m_State = state;
                 m_lstNodes.get(lv_dev).m_Ring[1].m_State = state;
@@ -451,20 +545,20 @@ public class xltDevice {
     }
 
     public int getBrightness() {
-        return (getBrightness(m_DevID));
+        return(getBrightness(m_DevID));
     }
 
     public int getBrightness(final int nodeID) {
-        return (getBrightness(nodeID, RING_ID_ALL));
+        return(getBrightness(nodeID, RING_ID_ALL));
     }
 
     public int getBrightness(final int nodeID, final int ringID) {
         int index = getRingIndex(ringID);
         int lv_dev = findNodeFromDeviceList(nodeID);
-        if (lv_dev >= 0) {
+        if( lv_dev >= 0 ) {
             return m_lstNodes.get(lv_dev).m_Ring[index].m_Brightness;
         }
-        return (-1);
+        return(-1);
     }
 
     public void setBrightness(final int brightness) {
@@ -477,7 +571,7 @@ public class xltDevice {
 
     public void setBrightness(final int nodeID, final int ringID, final int brightness) {
         int lv_dev = findNodeFromDeviceList(nodeID);
-        if (lv_dev >= 0) {
+        if( lv_dev >= 0 ) {
             if (ringID == RING_ID_ALL) {
                 m_lstNodes.get(lv_dev).m_Ring[0].m_Brightness = brightness;
                 m_lstNodes.get(lv_dev).m_Ring[1].m_Brightness = brightness;
@@ -490,20 +584,20 @@ public class xltDevice {
     }
 
     public int getCCT() {
-        return (getCCT(m_DevID));
+        return(getCCT(m_DevID));
     }
 
     public int getCCT(final int nodeID) {
-        return (getCCT(nodeID, RING_ID_ALL));
+        return(getCCT(nodeID, RING_ID_ALL));
     }
 
     public int getCCT(final int nodeID, final int ringID) {
         int index = getRingIndex(ringID);
         int lv_dev = findNodeFromDeviceList(nodeID);
-        if (lv_dev >= 0) {
+        if( lv_dev >= 0 ) {
             return m_lstNodes.get(lv_dev).m_Ring[index].m_CCT;
         }
-        return (-1);
+        return(-1);
     }
 
     public void setCCT(final int nodeID, final int cct) {
@@ -516,7 +610,7 @@ public class xltDevice {
 
     public void setCCT(final int nodeID, final int ringID, final int cct) {
         int lv_dev = findNodeFromDeviceList(nodeID);
-        if (lv_dev >= 0) {
+        if( lv_dev >= 0 ) {
             if (ringID == RING_ID_ALL) {
                 m_lstNodes.get(lv_dev).m_Ring[0].m_CCT = cct;
                 m_lstNodes.get(lv_dev).m_Ring[1].m_CCT = cct;
@@ -529,20 +623,20 @@ public class xltDevice {
     }
 
     public int getWhite() {
-        return (getWhite(m_DevID));
+        return(getWhite(m_DevID));
     }
 
     public int getWhite(final int nodeID) {
-        return (getWhite(nodeID, RING_ID_ALL));
+        return(getWhite(nodeID, RING_ID_ALL));
     }
 
     public int getWhite(final int nodeID, final int ringID) {
         int index = getRingIndex(ringID);
         int lv_dev = findNodeFromDeviceList(nodeID);
-        if (lv_dev >= 0) {
-            return (m_lstNodes.get(lv_dev).m_Ring[index].m_CCT % 256);
+        if( lv_dev >= 0 ) {
+            return(m_lstNodes.get(lv_dev).m_Ring[index].m_CCT % 256);
         }
-        return (-1);
+        return(-1);
     }
 
     public void setWhite(final int white) {
@@ -555,7 +649,7 @@ public class xltDevice {
 
     public void setWhite(final int nodeID, final int ringID, final int white) {
         int lv_dev = findNodeFromDeviceList(nodeID);
-        if (lv_dev >= 0) {
+        if( lv_dev >= 0 ) {
             if (ringID == RING_ID_ALL) {
                 m_lstNodes.get(lv_dev).m_Ring[0].m_CCT = white;
                 m_lstNodes.get(lv_dev).m_Ring[1].m_CCT = white;
@@ -568,20 +662,20 @@ public class xltDevice {
     }
 
     public int getRed() {
-        return (getRed(m_DevID));
+        return(getRed(m_DevID));
     }
 
     public int getRed(final int nodeID) {
-        return (getRed(nodeID, RING_ID_ALL));
+        return(getRed(nodeID, RING_ID_ALL));
     }
 
     public int getRed(final int nodeID, final int ringID) {
         int index = getRingIndex(ringID);
         int lv_dev = findNodeFromDeviceList(nodeID);
-        if (lv_dev >= 0) {
-            return (m_lstNodes.get(lv_dev).m_Ring[index].m_R);
+        if( lv_dev >= 0 ) {
+            return(m_lstNodes.get(lv_dev).m_Ring[index].m_R);
         }
-        return (-1);
+        return(-1);
     }
 
     public void setRed(final int red) {
@@ -594,7 +688,7 @@ public class xltDevice {
 
     public void setRed(final int nodeID, final int ringID, final int red) {
         int lv_dev = findNodeFromDeviceList(nodeID);
-        if (lv_dev >= 0) {
+        if( lv_dev >= 0 ) {
             if (ringID == RING_ID_ALL) {
                 m_lstNodes.get(lv_dev).m_Ring[0].m_R = red;
                 m_lstNodes.get(lv_dev).m_Ring[1].m_R = red;
@@ -607,20 +701,20 @@ public class xltDevice {
     }
 
     public int getGreen() {
-        return (getGreen(m_DevID));
+        return(getGreen(m_DevID));
     }
 
     public int getGreen(final int nodeID) {
-        return (getGreen(nodeID, RING_ID_ALL));
+        return(getGreen(nodeID, RING_ID_ALL));
     }
 
     public int getGreen(final int nodeID, final int ringID) {
         int index = getRingIndex(ringID);
         int lv_dev = findNodeFromDeviceList(nodeID);
-        if (lv_dev >= 0) {
-            return (m_lstNodes.get(lv_dev).m_Ring[index].m_G);
+        if( lv_dev >= 0 ) {
+            return(m_lstNodes.get(lv_dev).m_Ring[index].m_G);
         }
-        return (-1);
+        return(-1);
     }
 
     public void setGreen(final int green) {
@@ -633,7 +727,7 @@ public class xltDevice {
 
     public void setGreen(final int nodeID, final int ringID, final int green) {
         int lv_dev = findNodeFromDeviceList(nodeID);
-        if (lv_dev >= 0) {
+        if( lv_dev >= 0 ) {
             if (ringID == RING_ID_ALL) {
                 m_lstNodes.get(lv_dev).m_Ring[0].m_G = green;
                 m_lstNodes.get(lv_dev).m_Ring[1].m_G = green;
@@ -646,20 +740,20 @@ public class xltDevice {
     }
 
     public int getBlue() {
-        return (getBlue(m_DevID));
+        return(getBlue(m_DevID));
     }
 
     public int getBlue(final int nodeID) {
-        return (getBlue(nodeID, RING_ID_ALL));
+        return(getBlue(nodeID, RING_ID_ALL));
     }
 
     public int getBlue(final int nodeID, final int ringID) {
         int index = getRingIndex(ringID);
         int lv_dev = findNodeFromDeviceList(nodeID);
-        if (lv_dev >= 0) {
-            return (m_lstNodes.get(lv_dev).m_Ring[index].m_B);
+        if( lv_dev >= 0 ) {
+            return(m_lstNodes.get(lv_dev).m_Ring[index].m_B);
         }
-        return (-1);
+        return(-1);
     }
 
     public void setBlue(final int blue) {
@@ -672,7 +766,7 @@ public class xltDevice {
 
     public void setBlue(final int nodeID, final int ringID, final int blue) {
         int lv_dev = findNodeFromDeviceList(nodeID);
-        if (lv_dev >= 0) {
+        if( lv_dev >= 0 ) {
             if (ringID == RING_ID_ALL) {
                 m_lstNodes.get(lv_dev).m_Ring[0].m_B = blue;
                 m_lstNodes.get(lv_dev).m_Ring[1].m_B = blue;
@@ -689,7 +783,7 @@ public class xltDevice {
     //-------------------------------------------------------------------------
     public String getBridgeInfo(final BridgeType bridge) {
         String desc;
-        switch (bridge) {
+        switch(bridge) {
             case Cloud:
                 desc = "Cloud bridge " + (isCloudOK() ? "connected" : "not connected");
                 break;
@@ -708,19 +802,19 @@ public class xltDevice {
     }
 
     public boolean isCloudOK() {
-        return (cldBridge.isConnected());
+        return(cldBridge.isConnected());
     }
 
     public boolean isBLEOK() {
-        return (bleBridge.isConnected());
+        return(bleBridge.isConnected());
     }
 
     public boolean isLANOK() {
-        return (lanBridge.isConnected());
+        return(lanBridge.isConnected());
     }
 
     public boolean isBridgeOK(final BridgeType bridge) {
-        switch (bridge) {
+        switch(bridge) {
             case Cloud:
                 return isCloudOK();
             case BLE:
@@ -745,8 +839,9 @@ public class xltDevice {
 
     private BridgeType selectBridge() {
         /// Use current bridge as long as available
-        //if (isBridgeOK(m_currentBridge)) return m_currentBridge;
-        if (getAutoBridge()) {
+        if( isBridgeOK(m_currentBridge) ) return m_currentBridge;
+
+        if( getAutoBridge() ) {
             int maxPri = 0;
             if (isCloudOK() && cldBridge.getPriority() > maxPri) {
                 m_currentBridge = BridgeType.Cloud;
@@ -773,13 +868,13 @@ public class xltDevice {
 
     // Manually set bridge
     public boolean useBridge(final BridgeType bridge) {
-        if (bridge == BridgeType.Cloud && !isCloudOK()) {
+        if( bridge == BridgeType.Cloud && !isCloudOK() ) {
             return false;
         }
-        if (bridge == BridgeType.BLE && !isLANOK()) {
+        if( bridge == BridgeType.BLE && !isLANOK() ) {
             return false;
         }
-        if (bridge == BridgeType.LAN && !isBLEOK()) {
+        if( bridge == BridgeType.LAN && !isBLEOK() ) {
             return false;
         }
 
@@ -800,8 +895,8 @@ public class xltDevice {
 
         // Select Bridge
         selectBridge();
-        if (isBridgeOK(m_currentBridge)) {
-            switch (m_currentBridge) {
+        if( isBridgeOK(m_currentBridge) ) {
+            switch(m_currentBridge) {
                 case Cloud:
                     rc = cldBridge.JSONCommandQueryDevice();
                     break;
@@ -819,13 +914,11 @@ public class xltDevice {
     // Turn On / Off
     public int PowerSwitch(final int state) {
         int rc = -1;
-        Log.i("XLight", "Into PowerSwitch");
+
         // Select Bridge
         selectBridge();
-        Log.i("XLight", "Will Use " + m_currentBridge);
-        if (isBridgeOK(m_currentBridge)) {
-            Log.i("XLight", "Used " + m_currentBridge);
-            switch (m_currentBridge) {
+        if( isBridgeOK(m_currentBridge) ) {
+            switch(m_currentBridge) {
                 case Cloud:
                     rc = cldBridge.FastCallPowerSwitch(state);
                     break;
@@ -846,8 +939,8 @@ public class xltDevice {
 
         // Select Bridge
         selectBridge();
-        if (isBridgeOK(m_currentBridge)) {
-            switch (m_currentBridge) {
+        if( isBridgeOK(m_currentBridge) ) {
+            switch(m_currentBridge) {
                 case Cloud:
                     rc = cldBridge.JSONCommandBrightness(value);
                     break;
@@ -868,8 +961,8 @@ public class xltDevice {
 
         // Select Bridge
         selectBridge();
-        if (isBridgeOK(m_currentBridge)) {
-            switch (m_currentBridge) {
+        if( isBridgeOK(m_currentBridge) ) {
+            switch(m_currentBridge) {
                 case Cloud:
                     rc = cldBridge.JSONCommandCCT(value);
                     break;
@@ -890,8 +983,8 @@ public class xltDevice {
 
         // Select Bridge
         selectBridge();
-        if (isBridgeOK(m_currentBridge)) {
-            switch (m_currentBridge) {
+        if( isBridgeOK(m_currentBridge) ) {
+            switch(m_currentBridge) {
                 case Cloud:
                     rc = cldBridge.JSONCommandColor(ring, state, br, ww, r, g, b);
                     break;
@@ -912,10 +1005,32 @@ public class xltDevice {
 
         // Select Bridge
         selectBridge();
-        if (isBridgeOK(m_currentBridge)) {
-            switch (m_currentBridge) {
+        if( isBridgeOK(m_currentBridge) ) {
+            switch(m_currentBridge) {
                 case Cloud:
                     rc = cldBridge.JSONCommandScenario(scenario);
+                    break;
+                case BLE:
+                    // ToDo: call BLE API
+                    break;
+                case LAN:
+                    // ToDo: call LAN API
+                    break;
+            }
+        }
+        return rc;
+    }
+
+    // Set Special Effect
+    public int SetSpecialEffect(final int filter) {
+        int rc = -1;
+
+        // Select Bridge
+        selectBridge();
+        if( isBridgeOK(m_currentBridge) ) {
+            switch(m_currentBridge) {
+                case Cloud:
+                    rc = cldBridge.JSONCommandSpecialEffect(filter);
                     break;
                 case BLE:
                     // ToDo: call BLE API
@@ -979,9 +1094,9 @@ public class xltDevice {
         Message msg;
         for (int i = 0; i < m_lstEH_DevST.size(); i++) {
             handler = m_lstEH_DevST.get(i);
-            if (handler != null) {
+            if( handler != null ) {
                 msg = handler.obtainMessage();
-                if (msg != null) {
+                if( msg != null ) {
                     msg.setData(data);
                     handler.sendMessage(msg);
                 }
@@ -995,9 +1110,9 @@ public class xltDevice {
         Message msg;
         for (int i = 0; i < m_lstEH_SenDT.size(); i++) {
             handler = m_lstEH_SenDT.get(i);
-            if (handler != null) {
+            if( handler != null ) {
                 msg = handler.obtainMessage();
-                if (msg != null) {
+                if( msg != null ) {
                     msg.setData(data);
                     handler.sendMessage(msg);
                 }
@@ -1012,7 +1127,7 @@ public class xltDevice {
         int rc = -1;
 
         // Can only use Cloud Bridge
-        if (isCloudOK()) {
+        if( isCloudOK() ) {
             rc = cldBridge.JSONConfigScenario(scenarioId, br, cw, ww, r, g, b, filter);
         }
         return rc;
@@ -1022,7 +1137,7 @@ public class xltDevice {
         int rc = -1;
 
         // Can only use Cloud Bridge
-        if (isCloudOK()) {
+        if( isCloudOK() ) {
             rc = cldBridge.JSONConfigSchudle(scheduleId, isRepeat, weekdays, hour, minute, alarmId);
         }
         return rc;
@@ -1032,7 +1147,7 @@ public class xltDevice {
         int rc = -1;
 
         // Can only use Cloud Bridge
-        if (isCloudOK()) {
+        if( isCloudOK() ) {
             rc = cldBridge.JSONConfigRule(ruleId, scheduleId, scenarioId);
         }
         return rc;

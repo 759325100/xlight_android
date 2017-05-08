@@ -19,7 +19,7 @@ export const language = {
             loading: "Loading...",
             positionError: "Get location failed",
             weatherError: "Get weather information failed",
-            cancle: "Cancle",
+            cancel: "Cancel",
             all: "All"
         },
         Page: {
@@ -83,7 +83,7 @@ export const language = {
             loading: "正在加载...",
             positionError: "定位失败",
             weatherError: "获取天气信息失败",
-            cancle: "取消",
+            cancel: "取消",
             all: "全部"
         },
         Page: {

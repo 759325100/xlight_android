@@ -28,7 +28,6 @@ import tinycolor from "tinycolor2";
 
 const Controller = NativeModules.Controller;
 
-
 class Light extends Component {
     constructor(props) {
         super(props);
@@ -105,6 +104,11 @@ class Light extends Component {
         })
     }
 
+    componentWillUnmount() {
+        Controller.RemoveListenEvent();
+        DeviceEventEmitter.removeListener("updateXDDevice");
+    }
+
     isExist = (value) => {
         if (value || value == 0)
             return true
@@ -127,8 +131,9 @@ class Light extends Component {
     }
 
     setColor = (rgb) => {
-        console.log(rgb);
-        this.setState({color: `rgb(${rgb.r},${rgb.g},${rgb.b})`})
+        this.setState({color: `rgb(${rgb.r},${rgb.g},${rgb.b})`}, () => {
+            this.changeColor();
+        })
     }
 
     changeColor = () => {
@@ -191,14 +196,14 @@ class Light extends Component {
         const lightFont = this.props.indexReducer.language.Page.Light;
         let colors = [];
         const selectIcon = (<XIonic name="ios-checkmark" size={15} color="black"/>);
-        const options = [this.props.indexReducer.language.Toast.cancle];
+        const options = [this.props.indexReducer.language.Toast.cancel];
         this.state.deviceRings && this.state.deviceRings.length > 0 && this.state.deviceRings.forEach((ring) => {
             options.push(ring.ringname);
         });
         this.state.colors && this.state.colors.forEach((val, index) => {
             colors.push((<View style={{flex:1}} key={`color_${index}`}>
                 <TouchableOpacity
-                    onPress={()=>{this.setState({color:val}); this.changeColor()}}>
+                    onPress={()=>{this.setState({color:val},()=>{ this.changeColor()});}}>
                     <View style={[styles.fastIcon,{backgroundColor:val}]}></View>
                 </TouchableOpacity>
             </View>))
@@ -209,7 +214,7 @@ class Light extends Component {
                     <View style={[styles.header,{marginTop:this.props.indexReducer.marginTop}]}>
                         <View style={styles.leftIcon}>
                             <TouchableOpacity
-                                onPress={()=>{Controller.RemoveListenEvent(); this.props.navigation.goBack()}}>
+                                onPress={()=>{this.props.navigation.goBack()}}>
                                 <View>
                                     <XIcon name="angle-left" color={fontColor} size={28}/>
                                 </View>
@@ -394,7 +399,7 @@ class Light extends Component {
                                     <Button
                                         style={[styles.signBtn,styles.size20]}
                                         containerStyle={[styles.signContainer,styles.btnContainer]}
-                                        onPress={() => {this.setColor(tinycolor(this.state.picterColor).toRgb());this.changeColor();this.setState({colorPicker:{visible:false}})}}>
+                                        onPress={() => {this.setColor(tinycolor(this.state.picterColor).toRgb());this.setState({colorPicker:{visible:false}})}}>
                                         {lightFont.select}
                                     </Button>
                                 </View>
