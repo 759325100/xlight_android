@@ -20,6 +20,7 @@ import com.facebook.react.bridge.ReactMethod;
  */
 public class Command extends ReactContextBaseJavaModule {
     private AMapLocationClient locationClient = null;
+    private final String TAG = "Command";
 
     //构造函数
     public Command(ReactApplicationContext reactContext) {
@@ -39,7 +40,7 @@ public class Command extends ReactContextBaseJavaModule {
     @ReactMethod
     public void getApiLevel(Callback callback) {
         boolean isSupport = false;
-        Log.i("XLight", "Level->" + Build.VERSION.SDK_INT + "->" + Build.VERSION_CODES.KITKAT);
+        Log.i(TAG, "Level->" + Build.VERSION.SDK_INT + "->" + Build.VERSION_CODES.KITKAT);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT)
             isSupport = true;
         callback.invoke(isSupport);
@@ -57,11 +58,11 @@ public class Command extends ReactContextBaseJavaModule {
             locationClient.stopLocation();
         AMapLocation location = locationClient.getLastKnownLocation();
         if (location != null) {
-            Log.i("XLight", "getLastKnownLocation success");
+            Log.i(TAG, "getLastKnownLocation success");
             locationCallback.invoke(true, location.getLongitude(), location.getLatitude());
         }
         //开始定位
-        Log.i("XLight", "start Location");
+        Log.i(TAG, "start Location");
         locationClient.startLocation();
     }
 
@@ -95,11 +96,11 @@ public class Command extends ReactContextBaseJavaModule {
         @Override
         public void onLocationChanged(AMapLocation loc) {
             if (null != loc && loc.getErrorCode() == 0) {
-                Log.i("XLight", "get position " + loc.getLongitude() + "," + loc.getLatitude());
+                Log.i(TAG, "get position " + loc.getLongitude() + "," + loc.getLatitude());
                 //解析定位结果
                 locationCallback.invoke(true, loc.getLongitude(), loc.getLatitude());
             } else {
-                Log.e("AmapError", "location Error, ErrCode:"
+                Log.e(TAG, "location Error, ErrCode:"
                         + loc.getErrorCode() + ", errInfo:"
                         + loc.getErrorInfo());
                 errorCallback.invoke(false, loc.getErrorCode(), loc.getErrorInfo());

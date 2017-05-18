@@ -1,5 +1,9 @@
 package com.internal;
 
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
@@ -80,6 +84,17 @@ public class Controller extends ReactContextBaseJavaModule {
     public void ConnectMain(String deviceId) {
         try {
             xdData.Connect(deviceId);
+            //测试广播
+//            IntentFilter intentFilter = new IntentFilter(xltDevice.bciDeviceStatus);
+//            intentFilter.setPriority(3);
+//            if (!xdData.getEnableEventBroadcast())
+//                xdData.setEnableEventBroadcast(true);
+//            this.getReactApplicationContext().registerReceiver(new BroadcastReceiver() {
+//                @Override
+//                public void onReceive(Context context, Intent intent) {
+//                    Log.i(TAG, "INTENT RECEIVED by " + TAG);
+//                }
+//            }, intentFilter);
             if (!xdData.getEnableEventSendMessage()) {
                 xdData.setEnableEventSendMessage(true);
             }
@@ -133,6 +148,9 @@ public class Controller extends ReactContextBaseJavaModule {
     @ReactMethod
     public void Connect(String deviceId) {
         Log.i(TAG, "Connecting:" + deviceId);
+        //判断当前连接的deviceId就是将要连接的，return
+        if (xd.getControllerID() == deviceId)
+            return;
         //连接设备之前，进行其他设备监听移除
         xd.Connect(deviceId);
     }
@@ -142,7 +160,10 @@ public class Controller extends ReactContextBaseJavaModule {
      */
     @ReactMethod
     public void DisConnect() {
-
+        Log.i(TAG, "Disconnect deviceId : " + xd.getDeviceID());
+        xd.clearDataEventHandlerList();
+        xd.clearDeviceEventHandlerList();
+        xd.Disconnect();
     }
 
     /**
@@ -271,10 +292,14 @@ public class Controller extends ReactContextBaseJavaModule {
     @ReactMethod
     public void RemoveListenEvent() {
         Log.i(TAG, "remove event listen");
-        if (dataHandler != null)
-            xd.removeDataEventHandler(dataHandler);
-        if (deviceHandler != null)
-            xd.removeDeviceEventHandler(deviceHandler);
+        if (dataHandler != null) {
+            boolean result = xd.removeDataEventHandler(dataHandler);
+            Log.i(TAG, "clear all dataEvent result:" + result);
+        }
+        if (deviceHandler != null) {
+            boolean result = xd.removeDeviceEventHandler(deviceHandler);
+            Log.i(TAG, "remove deviceEvent result:" + result);
+        }
     }
 
     /**
