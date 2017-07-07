@@ -1,5 +1,7 @@
 /**
- * Created by 75932 on 2017/4/24.
+ * light page script
+ * waroom
+ * 2017/4/24
  */
 import React, {Component} from "react";
 import {
@@ -18,13 +20,14 @@ import {
 import {connect} from "react-redux";
 import {XIcon, XIonic} from "../component/XIcon";
 import Slider from "react-native-slider";
-import {setSceneId} from "../action/deviceAction";
 import ActionSheet from "react-native-actionsheet";
-import api from "../script/api";
+import {api, router} from "../script/api";
+import base from "../styles/base";
 import Modal from "react-native-modal";
 import {ColorPicker, toRgb} from "react-native-color-picker";
 import Button from "react-native-button";
 import tinycolor from "tinycolor2";
+import {setting} from "../script/setting";
 
 const Controller = NativeModules.Controller;
 
@@ -41,7 +44,6 @@ class Light extends Component {
                 "rgb(0,0,255)",
                 "rgb(139,0,255)"
             ],
-            color: "rgb(255,255,255)",
             useRing: 0,
             colorPicker: {
                 visible: false
@@ -50,40 +52,35 @@ class Light extends Component {
         this.selectRing = this.selectRing.bind(this)
     }
 
-    componentDidMount() {
+
+    componentWillMount() {
         //获取灯的实例，并设置到自身的State
-        const node_id = this.props.navigation.state.params.id;
-        const {devices} = this.props.deviceReducer;
-        devices && devices.length > 0 && devices.forEach((light) => {
-            if (node_id == light.id) {
-                this.setState({...light});
-                //进行连接
-                Controller.Connect(light.coreId);
-                //進行設備事件監聽
-                Controller.ListenEvent(1, light.nodeNo);
-            }
-        });
+        //const node_id = this.props.navigation.state.params.id;
+        //const {devices} = this.props.deviceReducer;
+        let device = this.props.navigation.state.params.device;
+        if (!device.color)
+            this.setState({color: "rgb(255,255,255)"});
+        this.state = Object.assign({}, device, this.state);
+        //进行连接
+        Controller.Query(this.state.coreId, this.state.nodeNo);
+        //進行設備事件監聽
+        //Controller.ListenEvent(1, this.state.nodeNo);
         //获取场景
-        const {Toast} = this.props.indexReducer.language;
         var accessToken = this.props.userReducer.user.access_token;
         //获取场景数据
-        fetch(api.scene.scenes + "?access_token=" + accessToken).then(ret => ret.json()).then(ret => {
+        api.get(router.scene.scenes, {access_token: accessToken}).then(ret => {
             if (ret.code == 1) {
                 const scenes = ret.data.rows;
-                this.setState({scenes: scenes});
+                this.setState({scenes: scenes}, this.getSceneName);
             } else {
                 //提示
-                ToastAndroid.show(Toast.apiError, ToastAndroid.SHORT);
+                ToastAndroid.show(this.Toast.apiError, ToastAndroid.SHORT);
             }
         }).catch(err => {
-            ToastAndroid.show(Toast.timeout, ToastAndroid.SHORT);
+            ToastAndroid.show(this.Toast.timeout, ToastAndroid.SHORT);
         });
-        //将灯的场景写入
-        setTimeout(() => {
-            this.props.dispatch(setSceneId(this.state.scenarioId || 0));
-        }, 1)
         //監聽設備事件
-        DeviceEventEmitter.addListener("updateXDDevice", (data) => {
+        this.subscription = DeviceEventEmitter.addListener("updateDevice", (data) => {
             // handle event.
             try {
                 const device = JSON.parse(data.data);
@@ -94,8 +91,9 @@ class Light extends Component {
                     }
                     if (this.isExist(device.CCT) && device.CCT != this.state.cct)
                         this.setState({cct: device.CCT});
-                    if (this.isExist(device.State) && device.State != this.state.isOn)
+                    if (this.isExist(device.State) && device.State != this.state.isOn) {
                         this.setState({isOn: device.State});
+                    }
                     if (this.isExist(device.R) && this.isExist(device.G) && this.isExist(device.B) && (device.R != this.getColor(0) || device.G != this.getColor(1) || device.B != this.getColor(2)))
                         this.setState({color: "rgb(" + device.R + "," + device.G + "," + device.B + ")"});
                 }
@@ -104,9 +102,12 @@ class Light extends Component {
         })
     }
 
+    goBack = () => {
+        this.props.navigation.goBack();
+    }
+
     componentWillUnmount() {
-        Controller.RemoveListenEvent();
-        DeviceEventEmitter.removeListener("updateXDDevice");
+        this.subscription.remove();
     }
 
     isExist = (value) => {
@@ -117,11 +118,27 @@ class Light extends Component {
     }
 
     changeBrightness = () => {
-        Controller.JSONCommand(JSON.stringify({cmd: 3, node_id: this.state.nodeNo, value: this.state.brightness}));
+        let args = {
+            cmd: 3,
+            node_id: this.state.nodeNo,
+            value: this.state.brightness
+        };
+        if (this.state.sid)
+            args["sid"] = this.state.sid;
+        Controller.JSONCommand(this.state.coreId, JSON.stringify(args));
+        this.resetScene();
     }
 
     changeCCT = () => {
-        Controller.JSONCommand(JSON.stringify({cmd: 5, node_id: this.state.nodeNo, value: this.state.cct}));
+        let args = {
+            cmd: 5,
+            node_id: this.state.nodeNo,
+            value: this.state.cct
+        };
+        if (this.state.sid)
+            args["sid"] = this.state.sid;
+        Controller.JSONCommand(this.state.coreId, JSON.stringify(args));
+        this.resetScene();
     }
 
     getColor = (i) => {
@@ -137,42 +154,47 @@ class Light extends Component {
     }
 
     changeColor = () => {
-        Controller.JSONCommand(JSON.stringify({
+        let args = {
             cmd: 2,
             node_id: this.state.nodeNo,
             ring: [0, 1, this.state.brightness, 0, this.getColor(0), this.getColor(1), this.getColor(2)]
-        }));
+        };
+        if (this.state.sid)
+            args["sid"] = this.state.sid;
+        Controller.JSONCommand(this.state.coreId, JSON.stringify(args));
+        this.resetScene();
     }
 
     changeState = () => {
         const state = this.state.isOn == 1 ? 0 : 1;
-        Controller.JSONCommand(JSON.stringify({
+        let args = {
             cmd: 1,
             node_id: this.state.nodeNo,
             state: state
-        }));
-        //this.setState({isOn: state});
+        }
+        if (this.state.sid)
+            args["sid"] = this.state.sid;
+        Controller.JSONCommand(this.state.coreId, JSON.stringify(args));
+        this.setState({isOn: !this.state.isOn});
     }
 
     getSceneName = () => {
         if (!this.state.scenarioName) {
             //找到场景名称
             this.state.scenes && this.state.scenes.length > 0 && this.state.scenes.forEach((scene) => {
-                if (this.props.deviceReducer.sceneId == scene.id) {
+                if (this.state.scenarioId == scene.id) {
                     this.setState({scenarioName: scene.scenarioname})
                 }
-            })
+            });
         }
-        return this.state.scenarioName;
     }
-
+    Toast = this.props.indexReducer.language;
     changeScene = (scene) => {
         let color;
         if (scene.scenarionodes && scene.scenarionodes.length)
             color = `rgb(${scene.scenarionodes[0].R},${scene.scenarionodes[0].G},${scene.scenarionodes[0].B})`
         else
             color = this.state.color;
-
         //应用场景数据
         this.setState({
             scenarioName: scene.scenarioname,
@@ -181,13 +203,43 @@ class Light extends Component {
             brightness: scene.brightness,
             color: color
         });
-        //调用改变场景（未对接）
+        //调用改变场景
+        api.put(router.deviceNode.changeScenario + this.state.id + "/changescenario", {
+            access_token: this.props.userReducer.user.access_token,
+            scenarioId: scene.id,
+            nodeid: this.state.nodeNo,
+            coreid: this.state.coreId
+        }).then(ret => {
+            if (ret.code != 1) {
+                //提示
+                ToastAndroid.show(this.Toast.apiError, ToastAndroid.SHORT);
+            }
+        }).catch(err => {
+            ToastAndroid.show(this.Toast.timeout, ToastAndroid.SHORT);
+        });
     }
 
     selectRing = (index) => {
         if (index != 0) {
-            //找到自己的
             this.setState({useRing: index});
+        }
+    }
+
+    resetScene = () => {
+        if (this.state.scenarioId) {
+            this.setState({scenarioId: 0});
+            //重置场景
+            api.put(router.deviceNode.deviceNode + this.state.id, {
+                scenarioId: 0,
+                access_token: this.props.userReducer.user.access_token
+            }).then(ret => {
+                if (ret.code != 1) {
+                    //提示
+                    ToastAndroid.show(this.Toast.apiError, ToastAndroid.SHORT);
+                }
+            }).catch(err => {
+                ToastAndroid.show(this.Toast.timeout, ToastAndroid.SHORT);
+            });
         }
     }
 
@@ -210,13 +262,14 @@ class Light extends Component {
         });
         return (
             <View style={styles.container}>
-                <View style={styles.top}>
+                <View style={[styles.top,base.loginBgColor]}>
                     <View style={[styles.header,{marginTop:this.props.indexReducer.marginTop}]}>
                         <View style={styles.leftIcon}>
                             <TouchableOpacity
-                                onPress={()=>{this.props.navigation.goBack()}}>
+                                onPress={()=>this.goBack()}>
                                 <View>
-                                    <XIcon name="angle-left" color={fontColor} size={28}/>
+                                    <XIcon name="angle-left" color={setting.header.iconColor}
+                                           size={setting.header.iconSize}/>
                                 </View>
                             </TouchableOpacity>
                         </View>
@@ -227,11 +280,11 @@ class Light extends Component {
 
                         </View>
                     </View>
-                    <View>
+                    <View style={{alignItems:"center"}}>
                         <Image source={require("../../assets/images/light.png")}></Image>
                     </View>
                 </View>
-                <ScrollView>
+                <ScrollView keyboardShouldPersistTaps={"always"}>
                     <View>
                         <View style={{alignItems:"center"}}>
                             <TouchableOpacity onPress={()=>{this.changeState()}} style={{alignItems:"center"}}>
@@ -248,31 +301,31 @@ class Light extends Component {
                         <View style={{flexDirection:"row"}}>
                             <View style={{flex:3,paddingLeft:5}}>
                                 <Text
-                                    style={styles.defaultSize}>{!this.state.scenarioId ? lightFont.selectScenario : this.getSceneName()}</Text>
+                                    style={styles.defaultSize}>{!this.state.scenarioId ? lightFont.selectScenario : this.state.scenarioName}</Text>
                             </View>
                             <View style={{flex:1,alignItems:"flex-end",paddingRight:5}}>
                                 <XIcon name="angle-right" size={25} color="#c7c7c7"/>
                             </View>
                         </View>
                     </TouchableOpacity>
-                    <TouchableOpacity
-                        style={[styles.item,{flexDirection:"column"}]}
-                        onPress={()=>{ this.ActionSheet.show()}}>
-                        <View style={{flexDirection:"row"}}>
-                            <View style={{flex:3,paddingLeft:5}}>
-                                <Text
-                                    style={styles.defaultSize}>{!this.state.useRing ? lightFont.selectRing : this.state.deviceRings[this.state.useRing - 1].ringname}</Text>
+                    {this.state.deviceNodeType > 1 ? <TouchableOpacity
+                            style={[styles.item,{flexDirection:"column"}]}
+                            onPress={()=>{ this.ActionSheet.show()}}>
+                            <View style={{flexDirection:"row"}}>
+                                <View style={{flex:3,paddingLeft:5}}>
+                                    <Text
+                                        style={styles.defaultSize}>{!this.state.useRing ? lightFont.selectRing : this.state.deviceRings[this.state.useRing - 1].ringname}</Text>
+                                </View>
+                                <View style={{flex:1,alignItems:"flex-end",paddingRight:5}}>
+                                    {(this.state.useRing &&
+                                    <TouchableOpacity onPress={()=>{this.setState({useRing:0})}}>
+                                        <View>
+                                            <XIonic name="ios-close-circle" size={25} color={"#c7c7c7"}/>
+                                        </View>
+                                    </TouchableOpacity>) || <XIcon name="angle-down" size={25} color="#c7c7c7"/>}
+                                </View>
                             </View>
-                            <View style={{flex:1,alignItems:"flex-end",paddingRight:5}}>
-                                {(this.state.useRing &&
-                                <TouchableOpacity onPress={()=>{this.setState({useRing:0})}}>
-                                    <View>
-                                        <XIonic name="ios-close-circle" size={25} color={"#c7c7c7"}/>
-                                    </View>
-                                </TouchableOpacity>) || <XIcon name="angle-down" size={25} color="#c7c7c7"/>}
-                            </View>
-                        </View>
-                    </TouchableOpacity>
+                        </TouchableOpacity> : <View></View>}
                     <View style={styles.pdSetting}>
                         <View style={{flex:1}}>
                             <Text style={[styles.settingSize,{flex:1}]}>
@@ -391,7 +444,7 @@ class Light extends Component {
                         <View style={{ flex: 1 }}>
                             <ColorPicker
                                 defaultColor={this.state.color}
-                                onColorSelected={color=>{this.setState({picterColor:color})}}
+                                onColorSelected={color=>{ this.setState({picterColor:color})}}
                                 style={{flex: 5}}
                             />
                             <View style={{flex:2,justifyContent:"center"}}>
@@ -399,7 +452,7 @@ class Light extends Component {
                                     <Button
                                         style={[styles.signBtn,styles.size20]}
                                         containerStyle={[styles.signContainer,styles.btnContainer]}
-                                        onPress={() => {this.setColor(tinycolor(this.state.picterColor).toRgb());this.setState({colorPicker:{visible:false}})}}>
+                                        onPress={() => { this.setColor(tinycolor(this.state.picterColor).toRgb());this.setState({colorPicker:{visible:false}})}}>
                                         {lightFont.select}
                                     </Button>
                                 </View>
@@ -448,12 +501,12 @@ const styles = StyleSheet.create({
         width: 20,
         height: 20,
         borderRadius: 20 / 2,
-        backgroundColor: 'white',
+        backgroundColor: '#4370E5',
         shadowColor: 'black',
         shadowOffset: {width: 0, height: 2},
         shadowRadius: 2,
         shadowOpacity: 0.35,
-        borderWidth: .5,
+        borderWidth: .0,
         top: 11
     },
     power: {
@@ -511,7 +564,6 @@ const styles = StyleSheet.create({
         justifyContent: "space-between"
     },
     top: {
-        backgroundColor: "#4370E5",
         height: 240
     },
     size20: {

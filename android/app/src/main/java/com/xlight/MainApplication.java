@@ -1,5 +1,6 @@
 package com.xlight;
 
+import android.app.Activity;
 import android.app.Application;
 import android.util.Log;
 
@@ -34,7 +35,7 @@ public class MainApplication extends Application implements ReactApplication {
         protected List<ReactPackage> getPackages() {
             return Arrays.<ReactPackage>asList(
                     new MainReactPackage(),
-            new SplashScreenReactPackage(),
+                    new SplashScreenReactPackage(),
                     new UpdatePackage(),
                     new VectorIconsPackage(),
                     new InternalPackage()

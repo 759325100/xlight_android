@@ -10,176 +10,88 @@ import {
     TouchableNativeFeedback,
     StatusBar,
     Image,
-    ScrollView,
     ToastAndroid,
     NativeModules,
-    ActivityIndicator
+    ActivityIndicator,
+    TouchableOpacity
 } from "react-native";
-import Button from "react-native-button";
-import TextField from "react-native-md-textinput";
 import {connect} from "react-redux";
-import {setUser} from "../action/userAction";
-import base from "../styles/base";
-import api from "../script/api";
+import Button from "react-native-button";
+import {XIonic} from "../component/XIcon";
+import {setting} from "../script/setting";
 const Controller = NativeModules.Controller;
 
 class Login extends Component {
     constructor(props) {
         super(props)
-        this.state = {
-            email: "",
-            password: "",
-            login: false
-        }
-    }
-
-    toastFont = this.props.state.language.Toast;
-    //保存用户信息
-    login = () => {
-        //检查用户信息
-        if (this.state.email == "") {
-            ToastAndroid.show(this.toastFont.emailEmpty, ToastAndroid.SHORT);
-        } else if (this.state.password == "") {
-            ToastAndroid.show(this.toastFont.passwordEmpty, ToastAndroid.SHORT);
-        } else {
-            //开始登录
-            this.setState({login: true});
-            const {dispatch} = this.props;
-            //自动登录，获取AccessToken
-            fetch(api.user.login, {
-                method: 'POST',
-                headers: api.headers,
-                body: JSON.stringify({
-                    username: this.state.email,
-                    password: this.state.password,
-                })
-            }).then((ret) => ret.json()).then((ret) => {
-                if (ret.code == 1) {
-                    //初始化设备
-                    Controller.Init(this.state.email, this.state.password);
-                    dispatch(setUser(ret.data[0]));
-                    //保存用户信息
-                    storage.save({
-                        key: "userInfo",
-                        rawData: {
-                            email: this.state.email,
-                            password: this.state.password,
-                        },
-                        expires: null
-                    });
-                    //到设备页
-                    this.props.navigation.navigate("Device");
-                } else {
-                    ToastAndroid.show(this.toastFont.userError, ToastAndroid.SHORT);
-                    this.setState({login: false});
-                }
-            }).catch((error) => {
-                //请求异常
-                ToastAndroid.show(this.toastFont.timeout, ToastAndroid.SHORT);
-                this.setState({login: false});
-            });
-        }
     }
 
     render() {
-        //const {params} = this.props.navigation.state;
-        let loginFont = this.props.state.language.Page.Login;
+        const loginFont = this.props.state.language.Page.Login;
         return (
-            <View style={[base.container,styles.container]}>
-                <StatusBar hidden={false} backgroundColor={"#1DA4DE"}/>
-                <View style={styles.icon}>
-                    <Image source={require("../../assets/images/xlt_160.png")} style={{width:50,height:50}}></Image>
+            <Image source={require("../../assets/images/login.gif")} style={styles.backgroundImage}>
+                <StatusBar hidden={false} translucent={true} animated={true}></StatusBar>
+                <View style={[{flex:1},{marginTop:this.props.state.marginTop}]}>
+                    <View style={styles.leftIcon}>
+                        <TouchableOpacity
+                            onPress={()=>{this.props.state.drawer.openDrawer()}}>
+                            <View>
+                                <XIonic name="ios-menu" color={setting.header.iconColor} size={setting.header.iconSize}/>
+                            </View>
+                        </TouchableOpacity>
+                    </View>
                 </View>
-                <View style={styles.form}>
-                    <View>
-                        <TextField inputStyle={styles.input} label={loginFont.inputEmail} highlightColor={'#fff'}
-                                   labelColor={"#fff"}
-                                   textColor={"#fff"} keyboardType={'email-address'}
-                                   onChangeText={(value)=>{
-                        this.setState({email:value})
-                    }} value={this.state.email}/>
+                <View style={{flex:1,justifyContent:"flex-end"}}>
+                    <View style={{flexDirection:"row",marginBottom:20, justifyContent:"space-around"}}>
+                        <View >
+                            <Button
+                                style={[styles.btnFont]}
+                                containerStyle={[styles.btnContainer]}
+                                onPress={() => this.props.navigation.navigate("SignUp")}
+                                styleDisabled={styles.btnDisabled}
+                            >
+                                {loginFont.registerBtn}
+                            </Button>
+                        </View>
+                        <View>
+                            <Button
+                                style={[styles.btnFont]}
+                                containerStyle={[styles.btnContainer,styles.hackContainer]}
+                                onPress={() => this.props.navigation.navigate("SignIn")}
+                                styleDisabled={styles.btnDisabled}
+                            >
+                                {loginFont.loginBtn}
+                            </Button>
+                        </View>
                     </View>
-                    <View >
-                        <TextField inputStyle={styles.input} label={loginFont.inputPassword} secureTextEntry={true}
-                                   highlightColor={'#fff'} labelColor={"#fff"} textColor={"#fff"} onChangeText={(value)=>{
-                                   this.setState({password:value})
-                               }} value={this.state.password}/>
-                    </View>
-                    <View style={{alignItems:"flex-end"}}>
-                        <Text style={styles.forget}>{loginFont.forgetPassword}</Text>
-                    </View>
-                    <View style={styles.button}>
-                        <Button
-                            style={[styles.signBtn,styles.size20]}
-                            containerStyle={[styles.signContainer,styles.btnContainer]}
-                            onPress={() => this.login()}
-                            disabled={this.state.login}
-                            styleDisabled={styles.btnDisabled}
-                        >
-                            {loginFont.loginBtn}
-                        </Button>
-                    </View>
-                    <View style={styles.button}>
-                        <Button
-                            style={[styles.registerBtn,styles.size20]}
-                            containerStyle={[styles.registerContainer,styles.btnContainer]}
-                            onPress={() => {}}>
-                            {loginFont.registerBtn}
-                        </Button>
-                    </View>
-                    <ActivityIndicator color={"white"} animating={this.state.login} size='large'/>
                 </View>
-            </View>
+            </Image>
         );
     }
 }
 
+const Dimensions = require('Dimensions');
+const {width, height} = Dimensions.get('window');
 const styles = StyleSheet.create({
-    container: {
-        backgroundColor: '#1DA4DE',
-    },
-    icon: {
-        flex: 1,
-        justifyContent: 'flex-end',
-        alignItems: 'center'
-    },
-    form: {
-        flex: 5
-    },
-    size20: {
-        fontSize: 20
-    },
-    signBtn: {
-        color: '#1DA4DE'
-    },
-    btnDisabled: {
-        color: "gray"
+    backgroundImage: {
+        width: width,
+        height: height,
+        //祛除内部元素的白色背景
+        backgroundColor: 'rgba(0,0,0,0)',
     },
     btnContainer: {
-        padding: 6, height: 40, overflow: 'hidden', borderRadius: 20,
+        width: width / 2 - 20, padding: 6, height: 40, overflow: 'hidden', borderRadius: 5, backgroundColor: "#5EB4CF"
     },
-    signContainer: {
-        backgroundColor: 'white'
+    hackContainer: {
+        backgroundColor: "#1F2229"
     },
-    registerBtn: {
-        color: 'white',
+    btnFont: {
+        fontSize: 20,
+        color: '#fff'
     },
-    registerContainer: {
-        backgroundColor: '#1DA4DE',
-        borderWidth: 1,
-        borderColor: "white"
+    leftIcon: {
+        flex: 1, paddingLeft: 15
     },
-    button: {
-        paddingTop: 15
-    },
-    forget: {
-        color: "white",
-        marginTop: 5
-    },
-    input: {
-        width: 220,
-        height: 40
-    }
 });
 
 const mapStateToProps = (state) => ({

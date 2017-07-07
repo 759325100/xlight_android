@@ -12,9 +12,6 @@ import com.umarbhutta.xlightcompanion.SDK.xltDevice;
 import java.io.IOException;
 import java.util.ArrayList;
 
-import org.json.JSONException;
-import org.json.JSONObject;
-
 import io.particle.android.sdk.cloud.ParticleCloudException;
 import io.particle.android.sdk.cloud.ParticleCloudSDK;
 import io.particle.android.sdk.cloud.ParticleDevice;
@@ -46,19 +43,22 @@ public class CloudBridge extends BaseBridge {
                     currDevice = ParticleCloudSDK.getCloud().getDevice(devID);
                     SubscribeDeviceEvents();
                     setConnect(true);
-
+                    m_parentDevice.onBridgeStatusChanged(xltDevice.BridgeType.Cloud, xltDevice.BCS_CONNECTED);
+                    if (m_parentDevice.m_onConnected != null) {
+                        m_parentDevice.m_onConnected.onConnected(xltDevice.BridgeType.Cloud, true);
+                    }
                     // Delay 2 seconds, then Query Main Device
                     Handler myHandler = new Handler(Looper.getMainLooper());
                     myHandler.postDelayed(new Runnable() {
                         @Override
-                        public void run()
-                        {
+                        public void run() {
                             JSONCommandQueryDevice(0);
                         }
                     }, 2000);
 
                 } catch (ParticleCloudException e) {
                     e.printStackTrace();
+                    m_parentDevice.onBridgeStatusChanged(xltDevice.BridgeType.Cloud, xltDevice.BCS_CONNECTION_FAILED);
                 }
             }
         }).start();
@@ -69,17 +69,21 @@ public class CloudBridge extends BaseBridge {
     public boolean disconnectCloud() {
         UnsubscribeDeviceEvents();
         setConnect(false);
+        m_parentDevice.onBridgeStatusChanged(xltDevice.BridgeType.Cloud, xltDevice.BCS_NOT_CONNECTED);
+        if (m_parentDevice.m_onConnected != null) {
+            m_parentDevice.m_onConnected.onConnected(xltDevice.BridgeType.Cloud, false);
+        }
         return true;
     }
 
-    public int JSONCommandPower(final boolean state) {
+    public int JSONCommandPower(final int nodeID, final boolean state, final int sid) {
         new Thread() {
             @Override
             public void run() {
                 int power = state ? xltDevice.STATE_ON : xltDevice.STATE_OFF;
 
                 // Make the Particle call here
-                String json = "{\"cmd\":" + xltDevice.CMD_POWER + ",\"nd\":" + getNodeID() + ",\"state\":" + power + "}";
+                String json = "{\"cmd\":" + xltDevice.CMD_POWER + ",\"nd\":" + nodeID + ",\"state\":" + power + (sid != 0 ? (",\"sid\":" + sid) : "") + "}";
                 //String json = "{'cmd':" + VALUE_POWER + ",'nd':" + nodeId + ",'state':" + power + "}";
                 ArrayList<String> message = new ArrayList<>();
                 message.add(json);
@@ -95,12 +99,16 @@ public class CloudBridge extends BaseBridge {
         return resultCode;
     }
 
-    public int JSONCommandBrightness(final int value) {
+    public int JSONCommandPower(final int nodeID, final boolean state) {
+        return JSONCommandPower(nodeID, state, 0);
+    }
+
+    public int JSONCommandBrightness(final int nodeID, final int value, final int sid) {
         new Thread() {
             @Override
             public void run() {
                 // Make the Particle call here
-                String json = "{\"cmd\":" + xltDevice.CMD_BRIGHTNESS + ",\"nd\":" + getNodeID() + ",\"value\":" + value + "}";
+                String json = "{\"cmd\":" + xltDevice.CMD_BRIGHTNESS + ",\"nd\":" + nodeID + ",\"value\":" + value + (sid != 0 ? (",\"sid\":" + sid) : "") + "}";
                 ArrayList<String> message = new ArrayList<>();
                 message.add(json);
                 try {
@@ -115,12 +123,16 @@ public class CloudBridge extends BaseBridge {
         return resultCode;
     }
 
-    public int JSONCommandCCT(final int value) {
+    public int JSONCommandBrightness(final int nodeID, final int value) {
+        return JSONCommandBrightness(nodeID, value, 0);
+    }
+
+    public int JSONCommandCCT(final int nodeID, final int value, final int sid) {
         new Thread() {
             @Override
             public void run() {
                 // Make the Particle call here
-                String json = "{\"cmd\":" + xltDevice.CMD_CCT + ",\"nd\":" + getNodeID() + ",\"value\":" + value + "}";
+                String json = "{\"cmd\":" + xltDevice.CMD_CCT + ",\"nd\":" + nodeID + ",\"value\":" + value + (sid != 0 ? (",\"sid\":" + sid) : "") + "}";
                 ArrayList<String> message = new ArrayList<>();
                 message.add(json);
                 try {
@@ -135,14 +147,18 @@ public class CloudBridge extends BaseBridge {
         return resultCode;
     }
 
-    public int JSONCommandColor(final int ring, final boolean state, final int br, final int ww, final int r, final int g, final int b) {
+    public int JSONCommandCCT(final int nodeID, final int value) {
+        return JSONCommandCCT(nodeID, value, 0);
+    }
+
+    public int JSONCommandColor(final int nodeID, final int ring, final boolean state, final int br, final int ww, final int r, final int g, final int b, final int sid) {
         new Thread() {
             @Override
             public void run() {
                 // Make the Particle call here
                 int power = state ? 1 : 0;
 
-                String json = "{\"cmd\":" + xltDevice.CMD_COLOR + ",\"nd\":" + getNodeID() + ",\"ring\":[" + ring + "," + power + "," + br + "," + ww + "," + r + "," + g + "," + b + "]}";
+                String json = "{\"cmd\":" + xltDevice.CMD_COLOR + ",\"nd\":" + nodeID + ",\"ring\":[" + ring + "," + power + "," + br + "," + ww + "," + r + "," + g + "," + b + "]" + (sid != 0 ? (",\"sid\":" + sid) : "") + "}";
                 ArrayList<String> message = new ArrayList<>();
                 message.add(json);
                 try {
@@ -157,8 +173,12 @@ public class CloudBridge extends BaseBridge {
         return resultCode;
     }
 
+    public int JSONCommandColor(final int nodeID, final int ring, final boolean state, final int br, final int ww, final int r, final int g, final int b) {
+        return JSONCommandColor(nodeID, ring, state, br, ww, r, g, b, 0);
+    }
 
-    public int JSONCommandScenario(final int scenario) {
+
+    public int JSONCommandScenario(final int nodeID, final int scenario) {
         new Thread() {
             @Override
             public void run() {
@@ -166,7 +186,7 @@ public class CloudBridge extends BaseBridge {
                 //hence the parameter of position is good to go in this function as is - doesn't need to be incremented by 1 for the uid for scenario
 
                 // Make the Particle call here
-                String json = "{\"cmd\":" + xltDevice.CMD_SCENARIO + ",\"nd\":" + getNodeID() + ",\"SNT_id\":" + scenario + "}";
+                String json = "{\"cmd\":" + xltDevice.CMD_SCENARIO + ",\"nd\":" + nodeID + ",\"SNT_id\":" + scenario + "}";
                 ArrayList<String> message = new ArrayList<>();
                 message.add(json);
                 try {
@@ -181,12 +201,12 @@ public class CloudBridge extends BaseBridge {
         return resultCode;
     }
 
-    public int JSONCommandSpecialEffect(final int filter) {
+    public int JSONCommandSpecialEffect(final int nodeID, final int filter) {
         new Thread() {
             @Override
             public void run() {
                 // Make the Particle call here
-                String json = "{\"cmd\":" + xltDevice.CMD_EFFECT + ",\"nd\":" + getNodeID() + ",\"filter\":" + filter + "}";
+                String json = "{\"cmd\":" + xltDevice.CMD_EFFECT + ",\"nd\":" + nodeID + ",\"filter\":" + filter + "}";
                 ArrayList<String> message = new ArrayList<>();
                 message.add(json);
                 try {
@@ -358,12 +378,12 @@ public class CloudBridge extends BaseBridge {
         return resultCode;
     }
 
-    public int JSONGetDeviceStatus() {
+    public int JSONGetDeviceStatus(final int nodeID) {
         new Thread() {
             @Override
             public void run() {
                 //construct first part of string input, and store it in arraylist (of size 1)
-                String json = "{\"op\":0,\"fl\":1,\"run\":0,\"uid\":\"h" + getNodeID() + "}";
+                String json = "{\"op\":0,\"fl\":1,\"run\":0,\"uid\":\"h" + nodeID + "}";
                 ArrayList<String> message = new ArrayList<>();
                 message.add(json);
                 //send in first part of string
@@ -379,12 +399,12 @@ public class CloudBridge extends BaseBridge {
         return resultCode;
     }
 
-    public int FastCallPowerSwitch(final int state) {
+    public int FastCallPowerSwitch(final int nodeID, final int state, final int sid) {
         new Thread() {
             @Override
             public void run() {
                 // Make the Particle call here
-                String strParam = String.format("%d:%d", getNodeID(), state);
+                String strParam = String.format("%d:%d", nodeID, state);
                 ArrayList<String> message = new ArrayList<>();
                 message.add(strParam);
                 try {
@@ -396,6 +416,10 @@ public class CloudBridge extends BaseBridge {
             }
         }.start();
         return resultCode;
+    }
+
+    public int FastCallPowerSwitch(final int nodeID, final int state) {
+        return FastCallPowerSwitch(nodeID, state, 0);
     }
 
     // Particle events publishing & subscribing
@@ -416,35 +440,35 @@ public class CloudBridge extends BaseBridge {
                                 eventName = xltDevice.eventDeviceStatus;
                             }*/
 
-                            if( m_parentDevice != null ) {
+                            if (m_parentDevice != null) {
                                 // Demo option: use handler & sendMessage to inform activities
                                 // Parsing Event
                                 Bundle bdlEventData = new Bundle();
                                 if (eventName.equalsIgnoreCase(xltDevice.eventDeviceStatus)) {
-                                    int nodeId = ParseDeviceStatusEvent(event.dataPayload, bdlEventData);
-                                    if( nodeId > 0 ) {
-                                        if( m_parentDevice.getEnableEventSendMessage() ) {
-                                            m_parentDevice.sendDeviceStatusMessage(bdlEventData);
-                                        }
-                                        if( m_parentDevice.getEnableEventBroadcast() ) {
-                                            Intent devStatus = new Intent(xltDevice.bciDeviceStatus);
-                                            devStatus.putExtra("nd", nodeId);
-                                            m_parentContext.sendBroadcast(devStatus);
-                                        }
+                                    int nodeId = m_eventParser.ParseDeviceStatusEvent(event.deviceId, event.dataPayload, bdlEventData);
+                                    //if (nodeId > 0) {
+                                    if (m_parentDevice.getEnableEventSendMessage()) {
+                                        m_parentDevice.sendDeviceStatusMessage(bdlEventData);
                                     }
+                                    if (m_parentDevice.getEnableEventBroadcast()) {
+                                        Intent devStatus = new Intent(xltDevice.bciDeviceStatus);
+                                        devStatus.putExtra("nd", nodeId);
+                                        m_parentContext.sendBroadcast(devStatus);
+                                    }
+                                    //}
                                 } else if (eventName.equalsIgnoreCase(xltDevice.eventSensorData)) {
-                                    if( ParseSensorDataEvent(event.dataPayload, bdlEventData) > 0 ) {
-                                        if( m_parentDevice.getEnableEventSendMessage() ) {
+                                    if (m_eventParser.ParseSensorDataEvent(event.deviceId, event.dataPayload, bdlEventData) > 0) {
+                                        if (m_parentDevice.getEnableEventSendMessage()) {
                                             m_parentDevice.sendSensorDataMessage(bdlEventData);
                                         }
-                                        if( m_parentDevice.getEnableEventBroadcast() ) {
+                                        if (m_parentDevice.getEnableEventBroadcast()) {
                                             m_parentContext.sendBroadcast(new Intent(xltDevice.bciSensorData));
                                         }
                                     }
                                 } else if (eventName.equalsIgnoreCase(xltDevice.eventAlarm)) {
                                     // ToDo: parse alarm message and Send alarm message
                                     //...
-                                    if( m_parentDevice.getEnableEventBroadcast() ) {
+                                    if (m_parentDevice.getEnableEventBroadcast()) {
                                         m_parentContext.sendBroadcast(new Intent(xltDevice.bciAlarm));
                                     }
                                 } else if (eventName.equalsIgnoreCase(xltDevice.eventDeviceConfig)) {
@@ -473,7 +497,7 @@ public class CloudBridge extends BaseBridge {
         new Thread() {
             @Override
             public void run() {
-                if( subscriptionId > 0 ) {
+                if (subscriptionId > 0) {
                     try {
                         currDevice.unsubscribeFromEvents(subscriptionId);
                     } catch (ParticleCloudException e) {
@@ -482,115 +506,5 @@ public class CloudBridge extends BaseBridge {
                 }
             }
         }.start();
-    }
-
-    private int ParseDeviceStatusEvent(final String dataPayload, Bundle bdlControl) {
-        int nodeId = -1;
-        try {
-            JSONObject jObject = new JSONObject(dataPayload);
-            if (jObject.has("nd")) {
-                nodeId = jObject.getInt("nd");
-                int ringId = xltDevice.RING_ID_ALL;
-                if (nodeId == m_parentDevice.getDeviceID() || m_parentDevice.findNodeFromDeviceList(nodeId) >= 0) {
-                    bdlControl.putInt("nd", nodeId);
-                    if (jObject.has("up")) {
-                        m_parentDevice.setNodeAlive(nodeId, jObject.getInt("up") > 0);
-                        bdlControl.putInt("up", jObject.getInt("up"));
-                    } else {
-                        m_parentDevice.setNodeAlive(nodeId, true);
-                    }
-                    if (jObject.has("tp")) {
-                        m_parentDevice.setDeviceType(nodeId, jObject.getInt("tp"));
-                        bdlControl.putInt("type", jObject.getInt("tp"));
-                    }
-                    if (jObject.has("filter")) {
-                        m_parentDevice.setFilter(nodeId, jObject.getInt("filter"));
-                        bdlControl.putInt("filter", jObject.getInt("filter"));
-                    }
-                    if (jObject.has("Ring")) {
-                        ringId = jObject.getInt("Ring");
-                    }
-                    bdlControl.putInt("Ring", ringId);
-                    if (jObject.has("State")) {
-                        m_parentDevice.setState(nodeId, jObject.getInt("State"));
-                        bdlControl.putInt("State", jObject.getInt("State"));
-                    }
-                    if (jObject.has("BR")) {
-                        m_parentDevice.setBrightness(nodeId, jObject.getInt("BR"));
-                        bdlControl.putInt("BR", jObject.getInt("BR"));
-                    }
-                    if (jObject.has("CCT")) {
-                        m_parentDevice.setCCT(nodeId, jObject.getInt("CCT"));
-                        bdlControl.putInt("CCT", jObject.getInt("CCT"));
-                    }
-                    if (jObject.has("W")) {
-                        m_parentDevice.setWhite(nodeId, ringId, jObject.getInt("W"));
-                        bdlControl.putInt("W", jObject.getInt("W"));
-                    }
-                    if (jObject.has("R")) {
-                        m_parentDevice.setRed(nodeId, ringId, jObject.getInt("R"));
-                        bdlControl.putInt("R", jObject.getInt("R"));
-                    }
-                    if (jObject.has("G")) {
-                        m_parentDevice.setGreen(nodeId, ringId, jObject.getInt("G"));
-                        bdlControl.putInt("G", jObject.getInt("G"));
-                    }
-                    if (jObject.has("B")) {
-                        m_parentDevice.setBlue(nodeId, ringId, jObject.getInt("B"));
-                        bdlControl.putInt("B", jObject.getInt("B"));
-                    }
-                }
-            }
-        } catch (final JSONException e) {
-            Log.e(TAG, "Json ParseDeviceStatusEvent error: " + e.getMessage());
-            return -1;
-        }
-        return nodeId;
-    }
-
-    private int ParseSensorDataEvent(final String dataPayload, Bundle bdlData) {
-        try {
-            JSONObject jObject = new JSONObject(dataPayload);
-            if (jObject.has("DHTt")) {
-                m_parentDevice.m_Data.m_RoomTemp = jObject.getInt("DHTt");
-                bdlData.putInt("DHTt", (int)m_parentDevice.m_Data.m_RoomTemp);
-            }
-            if (jObject.has("DHTh")) {
-                m_parentDevice.m_Data.m_RoomHumidity = jObject.getInt("DHTh");
-                bdlData.putInt("DHTh", m_parentDevice.m_Data.m_RoomHumidity);
-            }
-            if (jObject.has("ALS")) {
-                m_parentDevice.m_Data.m_RoomBrightness = jObject.getInt("ALS");
-                bdlData.putInt("ALS", m_parentDevice.m_Data.m_RoomBrightness);
-            }
-            if (jObject.has("MIC")) {
-                m_parentDevice.m_Data.m_Mic = jObject.getInt("MIC");
-                bdlData.putInt("MIC", m_parentDevice.m_Data.m_Mic);
-            }
-            if (jObject.has("PIR")) {
-                m_parentDevice.m_Data.m_PIR = jObject.getInt("PIR");
-                bdlData.putInt("PIR", m_parentDevice.m_Data.m_PIR);
-            }
-            if (jObject.has("GAS")) {
-                m_parentDevice.m_Data.m_GAS = jObject.getInt("GAS");
-                bdlData.putInt("GAS", m_parentDevice.m_Data.m_GAS);
-            }
-            if (jObject.has("SMK")) {
-                m_parentDevice.m_Data.m_Smoke = jObject.getInt("SMK");
-                bdlData.putInt("SMK", m_parentDevice.m_Data.m_Smoke);
-            }
-            if (jObject.has("PM25")) {
-                m_parentDevice.m_Data.m_PM25 = jObject.getInt("PM25");
-                bdlData.putInt("PM25", m_parentDevice.m_Data.m_PM25);
-            }
-            if (jObject.has("NOS")) {
-                m_parentDevice.m_Data.m_Noise = jObject.getInt("NOS");
-                bdlData.putInt("NOS", m_parentDevice.m_Data.m_Noise);
-            }
-        } catch (final JSONException e) {
-            Log.e(TAG, "Json ParseSensorDataEvent error: " + e.getMessage());
-            return -1;
-        }
-        return 1;
     }
 }

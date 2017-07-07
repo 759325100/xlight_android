@@ -19,3 +19,4 @@ export const SET_USER = "SET_USER";
 export const SET_DEVICES = "SET_DEVICES";
 export const SET_OUTWEATHER = "SET_OUTWEATHER";
 export const SET_SCENEID = "SET_SCENEID";
+export const SET_DEVICE = "SET_DEVICE";

@@ -4,15 +4,7 @@
 import * as types from "../action/actionType";
 
 export default deviceReducer = (state = {
-    location: "N/A",
-    outIcon: "code999",
-    outTemperature: "N/A",
-    outBodyTemperature: "N/A",
-    outHumidity: "N/A",
-    outRange: "N/A",
-    roomTemperature: "N/A",
-    roomHumidity: "N/A",
-    roomBrightness: "N/A"
+    devices: []
 }, action) => {
     switch (action.type) {
         case types.SET_DEVICES:
@@ -21,6 +13,12 @@ export default deviceReducer = (state = {
             return {...state, ...action.info}
         case types.SET_SCENEID:
             return {...state, sceneId: action.id}
+        case types.SET_DEVICE:
+            return Object.assign({}, state, {
+                devices: state.devices.map(device => {
+                    return device.id == action.device.id ? {...device, ...action.device} : device;
+                })
+            });
         default:
             return state;
     }

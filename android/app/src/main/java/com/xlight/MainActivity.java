@@ -7,6 +7,7 @@ import com.cboy.rn.splashscreen.SplashScreenReactPackage;
 
 import android.os.Bundle;
 import android.os.PersistableBundle;
+import android.util.Log;
 
 import com.facebook.react.ReactActivity;
 
@@ -21,9 +22,9 @@ public class MainActivity extends ReactActivity {
         return "xlight";
     }
 
-//    @Override
-//    public void onCreate(Bundle savedInstanceState, PersistableBundle persistentState) {
-//        SplashScreen.show(this);
-//        super.onCreate(savedInstanceState, persistentState);
-//    }
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        SplashScreen.show(this);
+        super.onCreate(savedInstanceState);
+    }
 }

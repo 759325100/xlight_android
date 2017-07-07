@@ -12,24 +12,28 @@ const {Component} = React;
 
 const window = Dimensions.get('window');
 import {connect} from "react-redux";
-import api from "../script/api";
+import {router} from "../script/api";
 import {language} from "../script/language";
+import base from "../styles/base";
 import {setLanguage} from "../action/index";
-import {XIcon,XIonic} from "./XIcon";
+import {XIcon, XIonic} from "./XIcon";
 const uri = 'https://pickaface.net/gallery/avatar/Opi51c74d0125fd4.png';
 
+const color = {
+    select: "#15B4F1",
+    normal: "#9B9A9A"
+}
 const styles = StyleSheet.create({
     menu: {
         flex: 1,
         width: window / 3 * 2,
-        height: window.height,
-        backgroundColor: '#15B4F1',
+        height: window.height
     },
     avatarContainer: {
         alignItems: "center"
     },
     selectColor: {
-        color: "#15B4F1"
+        color: color.select
     },
     avatar: {
         width: 48,
@@ -49,8 +53,10 @@ const styles = StyleSheet.create({
     itemFont: {
         fontSize: 18,
         fontWeight: '300',
-        color: "#9B9A9A",
         marginLeft: 5
+    },
+    normalColor: {
+        color: color.normal
     },
     close: {
         alignItems: "flex-end",
@@ -59,6 +65,17 @@ const styles = StyleSheet.create({
     closeFont: {
         color: "white",
         fontSize: 25
+    },
+    userView: {
+        alignItems: "center", paddingTop: 5, paddingBottom: 20
+    },
+    languageView: {
+        flex: 1,
+        flexDirection: "row",
+        justifyContent: "space-around",
+        alignItems: "flex-end",
+        backgroundColor: "white",
+        paddingBottom: 5
     }
 });
 
@@ -85,27 +102,29 @@ class Menu extends Component {
             menuRender.push((
                 <TouchableOpacity onPress={() => this.props.onItemSelected(menu.routeName)} key={`index_${index}`}>
                     <View style={styles.item}>
-                        <XIcon name={menu.icon} color={"#9B9A9A"} size={26}></XIcon>
-                        <Text style={styles.itemFont}>{menu.menuName}</Text>
+                        <XIcon name={menu.icon} color={this.props.select == menu.routeName?color.select:color.normal}
+                               size={26}></XIcon>
+                        <Text
+                            style={[styles.itemFont,this.props.select == menu.routeName?styles.selectColor:styles.normalColor]}>{menu.menuName}</Text>
                     </View>
                 </TouchableOpacity>));
-        })
+        });
         return (
-            <View style={styles.menu}>
+            <View style={[styles.menu,base.loginBgColor]}>
                 <View style={[styles.close,{marginTop:this.props.index.marginTop}]}>
                     <TouchableOpacity onPress={() => this.props.onClose()}>
                         <View>
-                            <XIonic name="md-close" size={30} color={"white"}/>
+                            <XIonic name="md-close" size={30} color={"#fff"}/>
                         </View>
                     </TouchableOpacity>
                 </View>
                 <View style={styles.avatarContainer}>
                     <Image
                         style={styles.avatar}
-                        source={{ uri: this.props.user.user? api.user.logo+this.props.user.user.image:uri}}/>
+                        source={{ uri: this.props.user.user&&this.props.user.user.image? router.user.logo+this.props.user.user.image:uri}}/>
                 </View>
-                <View style={{alignItems:"center",paddingTop:5,paddingBottom:20}}>
-                    <Text style={{color:"white"}}>
+                <View style={styles.userView}>
+                    <Text style={{color:"#fff"}}>
                         {this.props.user.user && this.props.user.user.username}
                     </Text>
                 </View>
@@ -113,12 +132,12 @@ class Menu extends Component {
                     {menuRender}
                 </View>
                 <View
-                    style={{flex:1,flexDirection:"row",justifyContent:"space-around",alignItems:"flex-end",backgroundColor:"white",paddingBottom:5}}>
+                    style={styles.languageView}>
                     <TouchableOpacity onPress={() =>{
                         this.changeLanguage("CN")
                     }}>
                         <View>
-                            <Text style={[styles.itemFont,this.props.index.lanType=="CN"&&styles.selectColor]}>中文</Text>
+                            <Text style={[styles.itemFont,this.props.index.lanType=="CN"?styles.selectColor:styles.normalColor]}>中文</Text>
                         </View>
                     </TouchableOpacity>
                     <TouchableOpacity onPress={() =>{
@@ -126,7 +145,7 @@ class Menu extends Component {
                     }}>
                         <View>
                             <Text
-                                style={[styles.itemFont,this.props.index.lanType=="EN"&&styles.selectColor]}>English</Text>
+                                style={[styles.itemFont,this.props.index.lanType=="EN"?styles.selectColor:styles.normalColor]}>English</Text>
                         </View>
                     </TouchableOpacity>
                 </View>

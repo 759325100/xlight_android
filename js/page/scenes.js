@@ -17,8 +17,9 @@ import {
     ActivityIndicator
 } from "react-native";
 import {connect} from "react-redux";
+import {setting} from "../script/setting";
 import {XIcon, XIonic} from "../component/XIcon";
-import api from "../script/api";
+import {api, router} from "../script/api";
 
 class Scenes extends Component {
     constructor(props) {
@@ -34,7 +35,7 @@ class Scenes extends Component {
         var accessToken = this.props.userReducer.user.access_token;
         this.setState({isLoding: true});
         //获取场景数据
-        fetch(api.scene.scenes + "?access_token=" + accessToken).then(ret => ret.json()).then(ret => {
+        api.get(router.scene.scenes, {access_token: accessToken}).then(ret => {
             if (ret.code == 1) {
                 const scenes = ret.data.rows;
                 this.setState({scenes: scenes, isLoding: false});
@@ -70,7 +71,7 @@ class Scenes extends Component {
                         style={[styles.item]}>
                         <View style={{alignItems:"center",paddingLeft:5,paddingRight:5}}>
                             {scene.image ?
-                                <Image source={{uri:api.user.logo+scene.image}} style={styles.logo}></Image> :
+                                <Image source={{uri:router.user.logo+scene.image}} style={styles.logo}></Image> :
                                 <XIonic name="md-qr-scanner" size={25} color="#333333"/>}
                         </View>
                         <View style={{flex:5}}>
@@ -94,7 +95,7 @@ class Scenes extends Component {
                             <TouchableOpacity
                                 onPress={()=>{this.props.navigation.goBack()}}>
                                 <View>
-                                    <XIcon name="angle-left" color={fontColor} size={28}/>
+                                    <XIcon name="angle-left" color={setting.header.iconColor} size={setting.header.iconSize}/>
                                 </View>
                             </TouchableOpacity>
                         </View>

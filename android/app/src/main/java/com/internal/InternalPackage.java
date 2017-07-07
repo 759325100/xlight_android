@@ -33,6 +33,8 @@ public class InternalPackage implements ReactPackage {
 
         modules.add(new Controller(reactContext));
         modules.add(new Command(reactContext));
+        modules.add(new BLECommand(reactContext));
+        modules.add(new WifiCommand(reactContext));
         return modules;
     }
 }

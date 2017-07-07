@@ -35,6 +35,7 @@ local.properties
 node_modules/
 npm-debug.log
 yarn-error.log
+.update
 
 # BUCK
 buck-out/
@@ -51,3 +52,7 @@ buck-out/
 fastlane/report.xml
 fastlane/Preview.html
 fastlane/screenshots
+android/app/src/main/java/com/umarbhutta/xlightcompanion/SDK/CloudAccount.java
+update.json
+
+

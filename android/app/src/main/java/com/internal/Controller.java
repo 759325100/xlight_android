@@ -7,10 +7,12 @@ import android.content.IntentFilter;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
+import android.provider.ContactsContract;
 import android.support.annotation.Nullable;
 import android.telecom.Call;
 import android.util.Log;
 
+import com.facebook.imagepipeline.producers.Consumer;
 import com.facebook.infer.annotation.Strict;
 import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.Callback;
@@ -26,15 +28,21 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.util.ArrayList;
+import java.util.Dictionary;
+import java.util.HashMap;
+import java.util.List;
+
 /**
  * Created by 75932 on 2017/4/17.
  * 设备控制类
  */
 public class Controller extends ReactContextBaseJavaModule {
-    private xltDevice xd;
-    private xltDevice xdData;
+    private List<xltDevice> lstXltDevice = new ArrayList<xltDevice>();
+    private HashMap<String, List<Integer>> mapDevices = new HashMap<String, List<Integer>>();
     private final String TAG = "Controller";
-    private String deviceId = null;
+    private String username;
+    private String password;
 
     //构造函数
     public Controller(ReactApplicationContext reactContext) {
@@ -46,6 +54,8 @@ public class Controller extends ReactContextBaseJavaModule {
         return "Controller";
     }
 
+    private xltDevice xd = null;
+
     /**
      * 初始化连接
      */
@@ -53,22 +63,128 @@ public class Controller extends ReactContextBaseJavaModule {
     public void Init(String username, String password) {
         try {
             Log.i(TAG, "Init xltDevice");
-            xd = new xltDevice();
+            xltDevice xd = new xltDevice();
             xd.Init(getReactApplicationContext(), username, password);
-            //强制使用云端
-            xd.useBridge(xltDevice.BridgeType.Cloud);
-            //不适用自动选择
-            xd.setAutoBridge(false);
-            //关闭广播监听
             xd.setEnableEventBroadcast(false);
-            //备用
-            xdData = new xltDevice();
-            xdData.Init(getReactApplicationContext(), username, password);
-            xdData.useBridge(xltDevice.BridgeType.Cloud);
-            xdData.setAutoBridge(false);
-            xdData.setEnableEventBroadcast(false);
+            this.username = username;
+            this.password = password;
         } catch (Exception e) {
             Log.e(TAG, e.getMessage());
+        }
+    }
+
+    @ReactMethod
+    public void InitList(String devices) {
+        try {
+            //释放lstXltDevice
+            for (xltDevice xlt : lstXltDevice) {
+                xlt.clearDataEventHandlerList();
+                xlt.Disconnect();
+            }
+            lstXltDevice.clear();
+            mapDevices.clear();
+            JSONArray dataJson = new JSONArray(devices);
+            for (int i = 0; i < dataJson.length(); i++) {
+                JSONObject objJson = dataJson.getJSONObject(i);
+                if (mapDevices.containsKey(objJson.getString("coreId"))) {
+                    List<Integer> lst = mapDevices.get(objJson.getString("coreId"));
+                    lst.add(objJson.getInt("nodeNo"));
+                    mapDevices.put(objJson.getString("coreId"), lst);
+                } else {
+                    List<Integer> lst = new ArrayList<Integer>();
+                    lst.add(objJson.getInt("nodeNo"));
+                    mapDevices.put(objJson.getString("coreId"), lst);
+                }
+                this.CreateDevice(objJson);
+            }
+            Log.i(TAG, "lstXltDevice size:" + lstXltDevice.size());
+        } catch (Exception e) {
+            Log.i(TAG, "JSONArray Convert Error");
+        }
+    }
+
+    private void CreateDevice(final JSONObject device) {
+        try {
+            //1、实例化对象
+            xltDevice xd = this.getXltDevice(device.getString("coreId"));
+            if (xd == null) {
+                xd = new xltDevice();
+                xd.Init(this.getReactApplicationContext(), this.username, this.password);
+                //xd.setAutoBridge(false);
+                //xd.useBridge(xltDevice.BridgeType.Cloud);
+                //2、连接设备
+                xd.Connect(device.getString("coreId"), new xltDevice.callbackConnect() {
+                    @Override
+                    public void onConnected(xltDevice.BridgeType bridge, boolean connected) {
+                        try {
+                            if (connected)
+                                for (String key : mapDevices.keySet()) {
+                                    if (key.equals(device.getString("coreId"))) {
+                                        xltDevice xd = getXltDevice(device.getString("coreId"));
+                                        //查询所有状态
+                                        for (Integer n : mapDevices.get(key)) {
+                                            xd.addNodeToDeviceList(n, device.getInt("deviceType"), device.getString("deviceName"));
+                                            xd.QueryStatus(n);
+                                            Log.i(TAG, "coreId:" + device.getString("coreId") + ",nd:" + n);
+                                        }
+                                        break;
+                                    }
+                                }
+                        } catch (Exception ex) {
+                            Log.e(TAG, ex.getMessage());
+                        }
+                    }
+                });
+                //3、设置属性
+                xd.setEnableEventBroadcast(false);
+                if (!xd.getEnableEventSendMessage())
+                    xd.setEnableEventSendMessage(true);
+                //4、并添加事件监听
+                if (device.getInt("isMain") == 1) { //主设备添加传感器
+                    //Log.i(TAG, "Main Device:" + device.getString("coreId"));
+                    Handler dataHandler = new Handler() {
+                        public void handleMessage(Message msg) {
+                            try {
+                                Bundle bundle = msg.getData();
+                                JSONObject jo = new JSONObject();
+                                for (String key : bundle.keySet()) {
+                                    jo.put(key, bundle.get(key));
+                                }
+                                Log.i(TAG, "receive main sensor msg:" + jo.toString());
+                                WritableMap params = Arguments.createMap();
+                                params.putString("data", jo.toString());
+                                sendEvent(getReactApplicationContext(), "updateSensor", params);
+                            } catch (Exception ex) {
+                                Log.e(TAG, ex.getMessage());
+                            }
+                        }
+                    };
+                    xd.addDataEventHandler(dataHandler);
+                }
+                Handler deviceHandler = new Handler(getReactApplicationContext().getMainLooper()) {
+                    public void handleMessage(Message msg) {
+                        try {
+                            Bundle bundle = msg.getData();
+                            JSONObject jo = new JSONObject();
+                            for (String key : bundle.keySet()) {
+                                jo.put(key, bundle.get(key));
+                            }
+                            Log.i(TAG, "receive XDDevice msg:" + jo.toString());
+                            WritableMap params = Arguments.createMap();
+                            params.putString("data", jo.toString());
+                            sendEvent(getReactApplicationContext(), "updateDevice", params);
+                        } catch (Exception ex) {
+                            Log.e(TAG, ex.getMessage());
+                        }
+                    }
+                };
+                xd.addDeviceEventHandler(deviceHandler);
+                lstXltDevice.add(xd);
+            }
+            //5、发送查询状态方法
+            //xd.QueryStatus(device.getInt("nodeNo"));
+        } catch (Exception ex) {
+            Log.e(TAG, ex.getMessage());
         }
     }
 
@@ -80,90 +196,23 @@ public class Controller extends ReactContextBaseJavaModule {
                 .emit(eventName, params);
     }
 
-    @ReactMethod
-    public void ConnectMain(String deviceId) {
-        try {
-            xdData.Connect(deviceId);
-            //测试广播
-//            IntentFilter intentFilter = new IntentFilter(xltDevice.bciDeviceStatus);
-//            intentFilter.setPriority(3);
-//            if (!xdData.getEnableEventBroadcast())
-//                xdData.setEnableEventBroadcast(true);
-//            this.getReactApplicationContext().registerReceiver(new BroadcastReceiver() {
-//                @Override
-//                public void onReceive(Context context, Intent intent) {
-//                    Log.i(TAG, "INTENT RECEIVED by " + TAG);
-//                }
-//            }, intentFilter);
-            if (!xdData.getEnableEventSendMessage()) {
-                xdData.setEnableEventSendMessage(true);
-            }
-            Handler dataHandler = new Handler() {
-                public void handleMessage(Message msg) {
-                    try {
-                        Bundle bundle = msg.getData();
-                        JSONObject jo = new JSONObject();
-                        for (String key : bundle.keySet()) {
-                            jo.put(key, bundle.get(key));
-                        }
-                        Log.i(TAG, "receive main sensor msg:" + jo.toString());
-                        WritableMap params = Arguments.createMap();
-                        params.putString("data", jo.toString());
-                        sendEvent(getReactApplicationContext(), "updateSensor", params);
-                    } catch (Exception ex) {
-                        Log.e(TAG, ex.getMessage());
-                    }
-                }
-            };
-            //移除事件，为保证效率，只能绑定一个通知
-            if (dataHandler != null)
-                xdData.removeDataEventHandler(dataHandler);
-            Log.i(this.TAG, "Init Main ListenEvent");
-            xdData.addDataEventHandler(dataHandler);
-        } catch (Exception ex) {
-            Log.e(this.TAG, ex.getMessage());
-        }
-    }
-
-    /**
-     * 判断指定设备是否已经连接
-     *
-     * @param deviceId {要判断的设备I}
-     * @param callback {判断后的结果回调}
-     */
-    @ReactMethod
-    public void IsConnected(String deviceId, Callback callback) {
-        if (deviceId != null && deviceId.equals(this.deviceId)) {
-            callback.invoke(true);
-        } else {
-            callback.invoke(false);
-        }
-    }
-
-    /**
-     * 连接指定设备
-     *
-     * @param deviceId
-     */
-    @ReactMethod
-    public void Connect(String deviceId) {
-        Log.i(TAG, "Connecting:" + deviceId);
-        //判断当前连接的deviceId就是将要连接的，return
-        if (xd.getControllerID() == deviceId)
-            return;
-        //连接设备之前，进行其他设备监听移除
-        xd.Connect(deviceId);
-    }
-
     /**
      * 断开连接
      */
     @ReactMethod
-    public void DisConnect() {
+    public void DisConnect(String deviceId) {
+        xltDevice xd = this.getXltDevice(deviceId);
         Log.i(TAG, "Disconnect deviceId : " + xd.getDeviceID());
         xd.clearDataEventHandlerList();
         xd.clearDeviceEventHandlerList();
         xd.Disconnect();
+    }
+
+    @ReactMethod
+    public void Query(String deviceId, int nd) {
+        xltDevice xd = this.getXltDevice(deviceId);
+        xd.setDeviceID(nd);
+        xd.QueryStatus();
     }
 
     /**
@@ -172,12 +221,12 @@ public class Controller extends ReactContextBaseJavaModule {
      * @param args {命令的JsonArray}
      */
     @ReactMethod
-    public void JSONCommandArray(String args) {
+    public void JSONCommandArray(String deviceId, String args) {
         try {
             JSONArray dataJson = new JSONArray(args);
             for (int i = 0; i < dataJson.length(); i++) {
                 JSONObject objJson = dataJson.getJSONObject(i);
-                this.JSONCommand(objJson.toString());
+                this.JSONCommand(deviceId, objJson.toString());
             }
         } catch (Exception e) {
             Log.i(TAG, "JSONArray Convert Error");
@@ -190,20 +239,23 @@ public class Controller extends ReactContextBaseJavaModule {
      * @param args
      */
     @ReactMethod
-    public void JSONCommand(String args) {
+    public void JSONCommand(String deviceId, String args) {
         try {
             JSONObject dataJson = new JSONObject(args);
-            this.JSONCommand(dataJson);
+            this.JSONCommand(deviceId, dataJson);
         } catch (JSONException e) {
             Log.i(TAG, "JSON Convert Error");
         }
     }
 
-    private void JSONCommand(JSONObject dataJson) {
+    private void JSONCommand(String deviceId, JSONObject dataJson) {
         try {
+            //xd.Connect(deviceId);
+            xltDevice xd = this.getXltDevice(deviceId);
             int cmd = dataJson.getInt("cmd");
             int nodeId = dataJson.getInt("node_id");
-            xd.setDeviceID(nodeId);
+            int sid = dataJson.has("sid") ? dataJson.getInt("sid") : 0;
+            xd.setDeviceID(nodeId, sid);
             switch (cmd) {
                 case 1:
                     //开关
@@ -248,85 +300,15 @@ public class Controller extends ReactContextBaseJavaModule {
         }
     }
 
-    //设备消息监听器
-    Handler deviceHandler = new Handler(getReactApplicationContext().getMainLooper()) {
-        public void handleMessage(Message msg) {
-            try {
-                Bundle bundle = msg.getData();
-                JSONObject jo = new JSONObject();
-                for (String key : bundle.keySet()) {
-                    jo.put(key, bundle.get(key));
-                }
-                Log.i(TAG, "receive main XDDevice msg:" + jo.toString());
-                WritableMap params = Arguments.createMap();
-                params.putString("data", jo.toString());
-                sendEvent(getReactApplicationContext(), "updateXDDevice", params);
-            } catch (Exception ex) {
-                Log.e(TAG, ex.getMessage());
+    private xltDevice getXltDevice(String deviceId) {
+        xltDevice xd = null;
+        for (xltDevice xlt : lstXltDevice) {
+            if (xlt.getControllerID().equals(deviceId)) {
+                xd = xlt;
+                break;
             }
         }
-    };
-
-    //数据消息监听器
-    Handler dataHandler = new Handler(getReactApplicationContext().getMainLooper()) {
-        public void handleMessage(Message msg) {
-            try {
-                Bundle bundle = msg.getData();
-                JSONObject jo = new JSONObject();
-                for (String key : bundle.keySet()) {
-                    jo.put(key, bundle.get(key));
-                }
-                Log.i(TAG, "receive main XDSensor msg:" + jo.toString());
-                WritableMap params = Arguments.createMap();
-                params.putString("data", jo.toString());
-                sendEvent(getReactApplicationContext(), "updateXDSensor", params);
-            } catch (Exception ex) {
-                Log.e(TAG, ex.getMessage());
-            }
-        }
-    };
-
-    /**
-     *
-     */
-    @ReactMethod
-    public void RemoveListenEvent() {
-        Log.i(TAG, "remove event listen");
-        if (dataHandler != null) {
-            boolean result = xd.removeDataEventHandler(dataHandler);
-            Log.i(TAG, "clear all dataEvent result:" + result);
-        }
-        if (deviceHandler != null) {
-            boolean result = xd.removeDeviceEventHandler(deviceHandler);
-            Log.i(TAG, "remove deviceEvent result:" + result);
-        }
-    }
-
-    /**
-     * 添加事件监听
-     *
-     * @param type {要监听的事件类型 0全部 1设备 2数据}
-     */
-    @ReactMethod
-    public void ListenEvent(int type, int nd) {
-        try {
-            if (!xd.getEnableEventSendMessage()) {
-                xd.setEnableEventSendMessage(true);
-            }
-            //移除事件，为保证效率，只能绑定一个通知
-            xd.clearDeviceEventHandlerList();
-            xd.clearDataEventHandlerList();
-            Log.i(this.TAG, "Init ListenEvent");
-            if (type == 0 || type == 1) {
-                xd.addDeviceEventHandler(deviceHandler);
-            }
-            if (type == 0 || type == 2)
-                xd.addDataEventHandler(dataHandler);
-            xd.setDeviceID(nd);
-            Log.i(TAG, "query node_id=" + nd);
-        } catch (Exception ex) {
-            Log.e(this.TAG, ex.getMessage());
-        }
+        return xd;
     }
 
     /**
@@ -335,8 +317,9 @@ public class Controller extends ReactContextBaseJavaModule {
      * @param state {bool}
      */
     @ReactMethod
-    public void PowerSwitch(boolean state) {
+    public void PowerSwitch(String deviceId, boolean state) {
         try {
+            xltDevice xd = this.getXltDevice(deviceId);
             //进行控制
             final int iState = state ? 1 : 0;
             int rc = xd.PowerSwitch(iState);

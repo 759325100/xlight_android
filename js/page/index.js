@@ -3,11 +3,13 @@
  */
 import React, {Component} from "react";
 import {StyleSheet, View, StatusBar, Image, ActivityIndicator, ToastAndroid, NativeModules} from "react-native";
-import api from "../script/api";
+import {router, api} from "../script/api";
 import {setLanguage} from "../action/index";
 import {setUser} from "../action/userAction";
 import {language, lanType} from "../script/language";
 import {connect} from "react-redux";
+import Update from "../script/update";
+import SplashScreen from "react-native-splash-screen";
 const Controller = NativeModules.Controller;
 
 class Index extends Component {
@@ -19,13 +21,20 @@ class Index extends Component {
     }
 
     componentDidMount() {
+        this.hide();
         const {dispatch} = this.props;
         //加载语言选项，默认为中文
         storage.load({key: "language"}).then(ret => {
             dispatch(setLanguage(ret, language[ret]));
+            //check版本
+            let update = new Update(language[ret].Toast);
+            update.checkUpdate();
         }, ex => {
             //设置默认为中文
             dispatch(setLanguage(lanType.cn, language[lanType.cn]));
+            //check版本
+            let update = new Update(language[lanType.cn].Toast);
+            update.checkUpdate();
         })
         // storage.remove({
         //     key: 'userInfo'
@@ -34,17 +43,13 @@ class Index extends Component {
         storage.load({key: "userInfo"}).then(ret => {
             const {email, password} = ret;
             //自动登录，获取AccessToken
-            fetch(api.user.login, {
-                method: 'POST',
-                headers: api.headers,
-                body: JSON.stringify({
-                    username: email,
-                    password: password,
-                })
-            }).then((ret) => ret.json()).then((ret) => {
+            api.post(router.user.login, {
+                username: email,
+                password: password,
+            }).then((ret) => {
                 if (ret.code == 1) {
                     //初始化设备
-                    Controller.Init("jinyangqiao@163.com", "123456");
+                    Controller.Init(email, password);
                     this.setState({isLoading: false});
                     dispatch(setUser(ret.data[0]));
                     //去设备页
@@ -53,9 +58,7 @@ class Index extends Component {
                     const {Toast} = this.props.state.language;
                     ToastAndroid.show(Toast.userExpired, ToastAndroid.SHORT);
                     this.setState({isLoading: false});
-                    setTimeout(() => {
-                        this.props.navigation.navigate('Login');
-                    }, 1000);
+                    this.props.navigation.navigate('Login');
                 }
             }).catch((error) => {
                 const {Toast} = this.props.state.language;
@@ -65,8 +68,15 @@ class Index extends Component {
         }, ex => {
             //进入登录页
             this.setState({isLoading: false});
+            //使用设备ID自动登录（暂无）
             this.props.navigation.navigate('Login');
         });
+    }
+
+    hide = () => {
+        setTimeout(() => {
+            SplashScreen.hide();
+        }, 100);
     }
 
     render() {

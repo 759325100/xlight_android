@@ -11,50 +11,58 @@ import Login from "./page/login";
 import Device from "./page/device";
 import Light from "./page/light";
 import Scenes from "./page/scenes";
+import SignUp from "./page/signUp";
+import SignIn from "./page/signIn";
+import Forget from "./page/forget";
+import addDevice from "./page/addDevice";
 import {setCurrentRouter, setSliderMenu, setMarginTop} from "./action/index";
 import Menu from "./component/Menu";
 const Command = NativeModules.Command;
 
+const headerHidden = {
+    navigationOptions: {
+        header: {
+            visible: false
+        }
+    }
+}
+
 export const AppNavigator = StackNavigator({
     Index: {
         screen: Index,
-        navigationOptions: {
-            header: {
-                visible: false
-            }
-        }
+        ...headerHidden
     },
     Login: {
         screen: Login,
-        navigationOptions: {
-            header: {
-                visible: false
-            }
-        }
+        ...headerHidden
     },
     Device: {
         screen: Device,
-        navigationOptions: {
-            header: {
-                visible: false
-            }
-        }
+        ...headerHidden
     },
     Light: {
         screen: Light,
-        navigationOptions: {
-            header: {
-                visible: false
-            }
-        }
+        ...headerHidden
     },
     Scenes: {
         screen: Scenes,
-        navigationOptions: {
-            header: {
-                visible: false
-            }
-        }
+        ...headerHidden
+    },
+    SignUp: {
+        screen: SignUp,
+        ...headerHidden
+    },
+    SignIn: {
+        screen: SignIn,
+        ...headerHidden
+    },
+    Forget: {
+        screen: Forget,
+        ...headerHidden
+    },
+    addDevice:{
+        screen: addDevice,
+        ...headerHidden
     }
 }, {
     initialRouteName: 'Index',
@@ -76,21 +84,44 @@ class AppWithNavigationState extends React.Component {
     constructor(props) {
         super(props);
         this.state = {
-            drawer: null
+            drawer: null,
+            selectItem: "Device"
         }
         Command.getApiLevel((support) => {
             if (support)
-                this.props.dispatch(setMarginTop(28))
+                this.props.dispatch(setMarginTop(25))
             else
                 this.props.dispatch(setMarginTop(5))
         })
     }
 
+    loadPage = (item) => {
+        const nav = this.navigator.state.nav;
+        this.state.selectItem = item;
+        //当前页面不是即将要跳转的页面
+        if (item != nav.routes[nav.index].routeName) {
+            //判断当前页面，有没有在back里
+            let isExist = false;
+            nav.routes.forEach((router, index) => {
+                if (router.routeName == item)
+                    isExist = true;
+                else if (isExist == true)
+                    isExist = router.key;
+            })
+            if (isExist)
+                this.navigator._navigation.goBack(isExist);
+            else
+                this.navigator._navigation.navigate(item)
+        } else {
+            this.props.nav.drawer && this.props.nav.drawer.closeDrawer();
+        }
+    }
+
     render() {
         const {dispatch} = this.props;
-        const menu = (<Menu navigator={navigator}
+        const menu = (<Menu navigator={navigator} select={this.state.selectItem}
                             onClose={()=>this.props.nav.drawer&&this.props.nav.drawer.closeDrawer()}
-                            onItemSelected={(item)=> {}}/>);
+                            onItemSelected={(item)=> this.loadPage(item)}/>);
         const Dimensions = require('Dimensions');
         const {width, height} = Dimensions.get('window');
         return (
@@ -101,14 +132,14 @@ class AppWithNavigationState extends React.Component {
                 keyboardDismissMode={"on-drag"}
                 ref={(drawer) => { !this.props.nav.drawer ?dispatch(setSliderMenu(drawer)) : null}}
                 renderNavigationView={() => menu}>
-                <AppNavigator onNavigationStateChange={(prevState, currentState) => {
-                    setTimeout(()=>{
-                       const currentScreen = this.getCurrentRouteName(currentState);
-                       dispatch(setCurrentRouter(currentScreen));
+                <AppNavigator ref={(navigator)=>this.navigator = navigator} onNavigationStateChange={(prevState, currentState) => {
+                    setTimeout(() => {
+                        const currentScreen = this.getCurrentRouteName(currentState);
+                        dispatch(setCurrentRouter(currentScreen));
                         //每次导航，关闭Drawer
-                       this.props.nav.drawer&& this.props.nav.drawer.closeDrawer();
-                    },1);
-            }}/>
+                        this.props.nav.drawer && this.props.nav.drawer.closeDrawer();
+                    }, 1);
+                }}/>
             </DrawerLayoutAndroid>
         )
     }

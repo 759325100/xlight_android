@@ -24,7 +24,17 @@ import {XIonic} from "../component/XIcon";
 import Button from "react-native-button";
 import Modal from "react-native-modal";
 import * as Tool from "../script/tool";
+import {setting} from "../script/setting";
+import {NavigationActions} from "react-navigation";
 const Controller = NativeModules.Controller;
+
+const resetAction = NavigationActions.reset({
+    index: 0,
+    actions: [
+        NavigationActions.navigate({routeName: 'Device'})
+    ]
+})
+
 class Login extends Component {
     constructor(props) {
         super(props)
@@ -72,7 +82,7 @@ class Login extends Component {
                     });
                     this.setState({login: false});
                     //到设备页
-                    this.props.navigation.navigate("Device");
+                    this.props.navigation.dispatch(resetAction);
                 } else {
                     this.setState({login: false});
                     ToastAndroid.show(this.toastFont.userError, ToastAndroid.SHORT);
@@ -87,13 +97,15 @@ class Login extends Component {
 
     render() {
         //const {params} = this.props.navigation.state;
-        let loginFont = this.props.state.language.Page.Login;
+        const loginFont = this.props.state.language.Page.Login;
         const inputProp = {
             autoFocus: true,
             autoCorrect: false,
             placeholderTextColor: "#fff",
-            underlineColorAndroid: "transparent"
+            underlineColorAndroid: "transparent",
+            maxLength: 50
         }
+
         return (
             <View style={[styles.container,base.loginBgColor]}>
                 <StatusBar hidden={false} translucent={true} animated={true}></StatusBar>
@@ -102,7 +114,8 @@ class Login extends Component {
                         <TouchableOpacity
                             onPress={()=>{this.props.navigation.goBack()}}>
                             <View>
-                                <XIonic name="ios-arrow-back" color={"#fff"} size={28}/>
+                                <XIonic name="ios-arrow-back" color={setting.header.iconColor}
+                                        size={setting.header.iconSize}/>
                             </View>
                         </TouchableOpacity>
                     </View>
@@ -113,7 +126,7 @@ class Login extends Component {
                 </View>
                 <View style={styles.content}>
                     <View style={{alignItems:"center"}}>
-                        <Image source={require("../../assets/images/xlt_160.png")} style={styles.logo}></Image>
+                        <Image source={require("../../assets/images/logo.png")} style={styles.logo}></Image>
                     </View>
                     <View style={{marginTop:20,alignItems:"center"}}>
                         <View style={base.input}>
@@ -138,6 +151,7 @@ class Login extends Component {
                             style={[base.btnFont]}
                             containerStyle={[base.btnContainer,this.state.empty&&base.btnDisabled]}
                             onPress={() => this.login()}
+                            styleDisabled={base.fontDisabled}
                             disabled={this.state.empty}>
                             {loginFont.loginBtn}
                         </Button>
@@ -145,7 +159,7 @@ class Login extends Component {
                     <View style={styles.linkView}>
                         <View style={styles.linkLeft}>
                             <TouchableOpacity
-                                onPress={()=>{this.props.state.drawer.openDrawer()}}>
+                                onPress={()=>{this.props.navigation.navigate("Forget")}}>
                                 <View>
                                     <Text style={styles.linkColor}>{loginFont.forgetPassword}</Text>
                                 </View>
@@ -155,7 +169,7 @@ class Login extends Component {
                             <TouchableOpacity
                                 onPress={()=>{this.props.navigation.navigate("SignUp")}}>
                                 <View>
-                                    <Text style={styles.linkColor}>{loginFont.registerBtn}</Text>
+                                    <Text style={ styles.linkColor}>{loginFont.registerBtn}</Text>
                                 </View>
                             </TouchableOpacity>
                         </View>
@@ -197,7 +211,7 @@ const styles = StyleSheet.create({
         justifyContent: "center"
     },
     logo: {
-        width: 60,
+        width: 100,
         height: 60
     },
     content: {

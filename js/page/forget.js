@@ -18,19 +18,18 @@ import {
 } from "react-native";
 import {connect} from "react-redux";
 import {XIonic} from "../component/XIcon";
-import {setUser} from "../action/userAction";
 import Button from "react-native-button";
 import base from "../styles/base";
 import Modal from "react-native-modal";
 import {api, router} from "../script/api";
 import * as Tool from "../script/tool";
-import {setting} from "../script/setting";
 import {NavigationActions} from "react-navigation";
+import {setting} from "../script/setting";
 const Controller = NativeModules.Controller;
 const resetAction = NavigationActions.reset({
     index: 0,
     actions: [
-        NavigationActions.navigate({routeName: 'Device'})
+        NavigationActions.navigate({routeName: 'Login'})
     ]
 })
 
@@ -67,40 +66,6 @@ class Login extends Component {
             this.setState({passwordEmpty: true});
     }
 
-    login = () => {
-        const {dispatch} = this.props;
-        //登录，获取AccessToken
-        api.post(router.user.login, {
-            username: this.state.email,
-            password: this.state.password
-        }).then((ret) => {
-            if (ret.code == 1) {
-                //初始化设备
-                Controller.Init(this.state.email, this.state.password);
-                dispatch(setUser(ret.data[0]));
-                //保存用户信息
-                storage.save({
-                    key: "userInfo",
-                    rawData: {
-                        email: this.state.email,
-                        password: this.state.password,
-                    },
-                    expires: null
-                });
-                this.setState({login: false});
-                this.setState({step: 4});
-                //到设备页
-                this.props.navigation.dispatch(resetAction);
-            } else {
-                this.setState({login: false});
-                ToastAndroid.show(this.toastFont.userError, ToastAndroid.SHORT);
-            }
-        }).catch((error) => {
-            //请求异常
-            ToastAndroid.show(this.toastFont.timeout, ToastAndroid.SHORT);
-            this.setState({login: false});
-        });
-    }
     next = () => {
         if (this.state.step == 1) {
             if (!Tool.regEmail(this.state.email)) {
@@ -108,14 +73,14 @@ class Login extends Component {
                 return;
             }
             //判断用户是否存在，并发送验证码（缺少）
-            api.post(router.user.exist, {
+            api.put(router.user.sendValidCode, {
                 email: this.state.email
             }).then(ret => {
                 if (ret.code == 1) {
                     //下一步
                     this.setState({step: 2});
                 } else if (ret.code == 0) {
-                    ToastAndroid.show(this.toastFont.userExist, ToastAndroid.SHORT);
+                    ToastAndroid.show(this.toastFont.userNotExist, ToastAndroid.SHORT);
                 } else {
                     ToastAndroid.show(this.toastFont.apiError, ToastAndroid.SHORT);
                 }
@@ -124,21 +89,19 @@ class Login extends Component {
             });
         } else if (this.state.step == 2) {
             //验证码验证
-            api.post(router.user.validCode, {
-                email: this.state.email,
-                verificationcode: this.state.code
-            }).then(ret => {
-                if (ret.code == 1) {
-                    this.setState({step: 3});
-                }else if(ret.code == 0){
-                    ToastAndroid.show(this.toastFont.invalidCode, ToastAndroid.SHORT);
-                }
-                else {
-                    ToastAndroid.show(this.toastFont.apiError, ToastAndroid.SHORT);
-                }
-            }).catch(err => {
-                ToastAndroid.show(this.toastFont.timeout, ToastAndroid.SHORT);
-            });
+            // api.post(router.user.validCode, {
+            //     email: this.state.email,
+            //     verificationcode: this.state.code
+            // }).then(ret => {
+            //     if (ret == 1) {
+            //         this.setState({step: 3});
+            //     } else {
+            //         ToastAndroid.show(this.toastFont.apiError, ToastAndroid.SHORT);
+            //     }
+            // }).catch(err => {
+            //     ToastAndroid.show(this.toastFont.timeout, ToastAndroid.SHORT);
+            // });
+            this.setState({step: 3});
         } else if (this.state.step == 3) {
             //进行密码验证
             if (this.state.password != this.state.confirmPassword) {
@@ -147,17 +110,20 @@ class Login extends Component {
             }
             this.setState({login: true});
             //创建用户
-            api.post(router.user.signUp, {
-                username: this.state.email,
-                password: this.state.password
+            api.put(router.user.resetPassword, {
+                email: this.state.email,
+                password: this.state.password,
+                verificationcode: this.state.code
             }).then(ret => {
                 if (ret.code == 1) {
-                    //调用登录
-                    this.login();
+                    //跳转到登录页
+                    this.props.navigation.dispatch(resetAction);
+                } else if (ret.code == 0) {
+                    ToastAndroid.show(this.toastFont.invalidCode, ToastAndroid.SHORT);
                 } else {
                     ToastAndroid.show(this.toastFont.apiError, ToastAndroid.SHORT);
-                    this.setState({login: false});
                 }
+                this.setState({login: false});
             }).catch(err => {
                 ToastAndroid.show(this.toastFont.timeout, ToastAndroid.SHORT);
                 this.setState({login: false});
@@ -167,7 +133,7 @@ class Login extends Component {
 
     render() {
         //const {params} = this.props.navigation.state;
-        const signUpFont = this.props.state.language.Page.SignUp;
+        const forget = this.props.state.language.Page.Forget;
         const loginFont = this.props.state.language.Page.Login;
         const inputProp = {
             autoFocus: true,
@@ -185,7 +151,7 @@ class Login extends Component {
                 </TouchableOpacity>
             </View>
             <View style={{flex:5,alignItems:"center"}}>
-                <Text style={base.headerText}>{loginFont.registerBtn}</Text>
+                <Text style={base.headerText}>{forget.header}</Text>
             </View>
             <View style={base.rightIcon}></View>
         </View>);
@@ -203,18 +169,13 @@ class Login extends Component {
                         <View style={base.input}>
                             <TextInput
                                 style={base.inputText} placeholder={loginFont.inputEmail} {...inputProp}
-                                onChangeText={(text) => this.setState({email:text},this.check)}
-                                value={this.state.email} maxLength={50}
+                                onChangeText={(text) => this.setState({email:text},this.check)} maxLength={50}
+                                value={this.state.email}
                             />
                         </View>
                     </View>
                     <View style={styles.fontView}>
-                        <Text style={styles.linkColor}>{signUpFont.remark}
-                            <Text style={[styles.linkColor,styles.underline]} onPress={()=>{}}>{signUpFont.terms}</Text>
-                            <Text style={styles.linkColor}>{signUpFont.and}</Text>
-                            <Text style={[styles.linkColor,styles.underline]}
-                                  onPress={()=>{}}>{signUpFont.policy}</Text>
-                        </Text>
+                        <Text style={styles.linkColor}>{forget.resetHint}</Text>
                     </View>
                     <View style={styles.itemView}>
                         <Button
@@ -223,18 +184,8 @@ class Login extends Component {
                             onPress={() => this.next()}
                             styleDisabled={base.fontDisabled}
                             disabled={this.state.emailEmpty}>
-                            {signUpFont.next}
+                            {forget.next}
                         </Button>
-                    </View>
-                    <View style={styles.linkView}>
-                        <View>
-                            <TouchableOpacity
-                                onPress={()=>{this.props.navigation.navigate("SignIn")}}>
-                                <View>
-                                    <Text style={styles.linkColor}>{loginFont.loginBtn}</Text>
-                                </View>
-                            </TouchableOpacity>
-                        </View>
                     </View>
                 </View>
                 <Modal isVisible={this.state.step==2} style={styles.clear} backdropOpacity={1}
@@ -246,14 +197,15 @@ class Login extends Component {
                                 <View style={base.input}>
                                     <TextInput
                                         style={base.inputText} keyboardType="numeric" maxLength={4}
-                                        placeholder={signUpFont.inputCode} {...inputProp}
+                                        placeholder={forget.inputCode} {...inputProp}
                                         onChangeText={(text) => this.setState({code:text},this.check)}
                                         value={this.state.code}
                                     />
                                 </View>
                                 <View style={{ paddingLeft: 20}}>
                                     <Text style={styles.linkColor}>
-                                        {signUpFont.verificationCode}{this.state.email}{signUpFont.verificationCodeAfter}
+                                        {forget.verificationCode}<Text>{this.state.email}</Text>
+                                        <Text>{forget.verificationCodeAfter}</Text>
                                     </Text>
                                 </View>
                             </View>
@@ -264,7 +216,7 @@ class Login extends Component {
                                     onPress={() => this.next()}
                                     styleDisabled={base.fontDisabled}
                                     disabled={this.state.codeEmpty}>
-                                    {signUpFont.next}
+                                    {forget.next}
                                 </Button>
                             </View>
 
@@ -280,7 +232,7 @@ class Login extends Component {
                                 <View style={[base.input,styles.rowInput]}>
                                     <TextInput
                                         style={[base.inputText,{flex:1}]} maxLength={20}
-                                        placeholder={signUpFont.inputPassword} {...inputProp}
+                                        placeholder={forget.inputPassword} {...inputProp}
                                         secureTextEntry={!this.state.eyeVisible}
                                         onChangeText={(text) => this.setState({password:text},this.check)}
                                         value={this.state.password}
@@ -297,7 +249,7 @@ class Login extends Component {
                                     <TextInput
                                         style={[base.inputText,{flex:1}]} maxLength={20}
                                         secureTextEntry={!this.state.eyeVisible}
-                                        placeholder={signUpFont.inputConfirmPassword} {...inputProp} autoFocus={false}
+                                        placeholder={forget.inputConfirmPassword} {...inputProp} autoFocus={false}
                                         onChangeText={(text) => this.setState({confirmPassword:text},this.check)}
                                         value={this.state.confirmPassword}
                                     />
@@ -317,7 +269,7 @@ class Login extends Component {
                                     onPress={() => this.next()}
                                     styleDisabled={base.fontDisabled}
                                     disabled={this.state.passwordEmpty}>
-                                    {loginFont.loginBtn}
+                                    {forget.next}
                                 </Button>
                             </View>
                         </View>
